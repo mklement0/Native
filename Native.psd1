@@ -1,7 +1,7 @@
 @{
 
 # Script module or binary module file associated with this manifest.
-RootModule = 'NativeShell.psm1'
+RootModule = 'Native.psm1'
 
 # Version number of this module.
 ModuleVersion = '0.1.0'
@@ -22,19 +22,13 @@ Copyright = '(c) 2020 Michael Klement <mklement0@gmail.com>, released under the 
 Description = 'Functionality related to passing command lines to the native shell for execution.'
 
 # Minimum version of the PowerShell engine required by this module
-PowerShellVersion = '2.0'
+PowerShellVersion = '3.0'
 
 FunctionsToExport = 'Invoke-NativeShell', 'inp'
 AliasesToExport = 'ins'
 
-# Cmdlets to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no cmdlets to export.
 CmdletsToExport = @()
-
-# Variables to export from this module
 VariablesToExport = @()
-
-# Aliases to export from this module, for best performance, do not use wildcards and do not delete the entry, use an empty array if there are no aliases to export.
-
 
 # Private data to pass to the module specified in RootModule/ModuleToProcess. This may also contain a PSData hashtable with additional module metadata used by PowerShell.
 PrivateData = @{
@@ -42,16 +36,16 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        Tags = 'clipboard','text','cross-platform'
+        Tags = 'native','shell','invoke', 'invocation', 'call'
 
         # A URL to the license for this module.
-        LicenseUri = 'https://github.com/mklement0/NativeShell/blob/master/LICENSE.md'
+        LicenseUri = 'https://github.com/mklement0/Native/blob/master/LICENSE'
 
         # A URL to the main website for this project.
-        ProjectUri = 'https://github.com/mklement0/NativeShell'
+        ProjectUri = 'https://github.com/mklement0/Native'
 
         # ReleaseNotes of this module - point this to the changelog section of the read-me
-        ReleaseNotes = 'https://github.com/mklement0/NativeShell/blob/master/CHANGELOG.md'
+        ReleaseNotes = 'https://github.com/mklement0/Native/blob/master/CHANGELOG.md'
 
     } # End of PSData hashtable
 
