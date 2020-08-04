@@ -692,15 +692,19 @@ the re-creation on the next invocation.
 
 #>
 
-  [CmdletBinding(PositionalBinding = $false)]
+  [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName='Default')]
   param(
     [Parameter(Mandatory, ValueFromRemainingArguments)]
     [Alias('Args')]
     $ArgumentList
     ,
+    [Parameter(ParameterSetName='BatchFile', Mandatory)]
     [switch] $UseBatchFile
     ,
+    [Parameter(ParameterSetName='WrapperBatchFile', Mandatory)]
     [switch] $UseWrapperBatchFile
+    ,
+    [switch] $UseIe
   )
   
   if (($UseBatchFile -or $UseWrapperBatchFile) -and -not $IsWindows) {
@@ -775,7 +779,12 @@ the re-creation on the next invocation.
     
       # Note: We explicitly use @ArgumentList rather than $ArgumentList,
       #       because we want to support --%, the stop-parsing symbol.
-      & $tmpBatchFile @ArgumentList
+      if ($UseIe) {
+        ie $tmpBatchFile @ArgumentList
+      }
+      else {
+        & $tmpBatchFile @ArgumentList
+      }
     
       Remove-Item -ErrorAction Ignore -LiteralPath $tmpBatchFile
     
@@ -784,7 +793,12 @@ the re-creation on the next invocation.
       # Note: We explicitly use @ArgumentList rather than $ArgumentList,
       #       because (on Windows) we want to support --%, the stop-parsing symbol.
       Write-Verbose "Executing helper binary: $helperBinary"
-      & $helperBinary @ArgumentList
+      if ($UseIe) {
+        ie $helperBinary @ArgumentList
+      }
+      else {
+        & $helperBinary @ArgumentList
+      }
     }
 
   }
@@ -796,7 +810,7 @@ the re-creation on the next invocation.
     # No need for a binary executable - a shell script will do.
     # Note: For consistency, and since --% is technically (albeit mostly uselessly)
     #       supported on Unix too, we also use @ArgumentList rather than $ArgumentList on Unix.
-    @'
+    $script = @'
 printf '%s\n\n' "$# argument(s) passed (enclosed in <...> for delineation):"
 
 for a; do 
@@ -804,7 +818,13 @@ for a; do
 done
 
 printf '%s\n'
-'@ | /bin/sh -s -- @ArgumentList
+'@
+    if ($UseIe) {
+      $script | ie /bin/sh -s -- @ArgumentList
+    } 
+    else {
+      $script | /bin/sh -s -- @ArgumentList
+    }
 
   }
 
