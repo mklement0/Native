@@ -24,8 +24,8 @@ Description = 'Functionality related to passing command lines to the native shel
 # Minimum version of the PowerShell engine required by this module
 PowerShellVersion = '3.0'
 
-FunctionsToExport = 'Invoke-NativeShell', 'inp'
-AliasesToExport = 'ins'
+FunctionsToExport = 'Invoke-NativeShell', 'ie', 'iet', 'Debug-ExecutableArguments'
+AliasesToExport = 'ins', 'dbea'
 
 CmdletsToExport = @()
 VariablesToExport = @()
