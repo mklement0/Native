@@ -105,7 +105,10 @@ task Publish -alias pub -depends _assertMasterBranch, _assertNoUntrackedFiles, T
   Write-Verbose -Verbose 'Committing...'
   # Use the change-log entry for the new version as the commit message.
   iu git add --update .
-  iu git commit -m (get-ChangeLogEntry -Version $moduleVersion)
+  if (git status --porcelain) {
+    # Commit only if the working tree is dirty - if there's nothign to commit, `commit -m` reports exit code 1.
+    iu git commit -m (get-ChangeLogEntry -Version $moduleVersion)
+  }
 
   # Note: 
   # We could try to assert up front that the version to be published has a higher number than
