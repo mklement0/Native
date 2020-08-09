@@ -1,15 +1,10 @@
-**WORK IN PROGRESS - DO NOT USE YET.**
-
 [![PowerShell Gallery](https://img.shields.io/powershellgallery/dt/Native.svg)](https://powershellgallery.com/packages/Native) [![license](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/mklement0/Native/blob/master/LICENSE.md)
-
-<!-- START doctoc -->
-<!-- END doctoc -->
 
 # `Native` - a PowerShell Module for Native-Shell and External-Executable Calls
 
 `Native` is a **cross-edition, cross-platform PowerShell module** (PowerShell **version 3 and above**) that comes with the following commands:
 
-To install for the current user, run `Install-Module Native -Scope CurrentUser` - see [Installation](#Installation) for details
+To **install** for the current user, run `Install-Module Native -Scope CurrentUser` - see [Installation](#Installation) for details
 
 * **`ins` (`Invoke-NativeShell`)** presents a unified inteface to the platform-native shell, allowing you to pass a command line either as as an argument - a single string - or via the pipeline:
   * Examples:

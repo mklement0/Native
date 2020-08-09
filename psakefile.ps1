@@ -700,7 +700,7 @@ function get-ChangeLogEntry {
   $changeLogFile = $props.Files.ChangeLog
   $content = Get-Content -Raw -LiteralPath $changeLogFile
   $entriesBlock = ($content -split '<!-- RETAIN THIS COMMENT.*?-->')[-1]
-  if ($entriesBlock -notmatch ('(?sm)' + [regex]::Escape("* **v$Version**") + '.+?(?=\r?\n' + [regex]::Escape('* **v') + ')')) {
+  if ($entriesBlock -notmatch ('(?sm)' + [regex]::Escape("* **v$Version**") + '.+?(?=$|\r?\n' + [regex]::Escape('* **v') + ')')) {
     Throw "Failed to extract change-long entry for version $version."
   }
   # Output the entry.
