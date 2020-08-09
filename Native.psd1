@@ -6,8 +6,10 @@ RootModule = 'Native.psm1'
 # Version number of this module.
 ModuleVersion = '1.0.0'
 
-# Supported PSEditions
-CompatiblePSEditions = @( 'Core', 'Desktop' )
+# Supported PSEditions: BOTH.
+# However, we can't use the `CompatiblePSEditions`entry, because it is 
+# only supported in v5.1+.
+# CompatiblePSEditions = 'Core', 'Desktop'
 
 # ID used to uniquely identify this module
 GUID = 'f7fd420a-47e4-4216-bd57-c88696123608'
