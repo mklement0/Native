@@ -21,7 +21,7 @@ Author = 'Michael Klement <mklement0@gmail.com>'
 Copyright = '(c) 2020 Michael Klement <mklement0@gmail.com>, released under the [MIT license](http://opensource.org/licenses/MIT)'
 
 # Description of the functionality provided by this module
-Description = 'Functionality related to passing command lines to the native shell for execution.'
+Description = 'Commands to facilitate native-shell and external-executable calls.'
 
 # Minimum version of the PowerShell engine required by this module
 PowerShellVersion = '3.0'
