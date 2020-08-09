@@ -12,7 +12,7 @@ Set-StrictMode -Version 1
 #region Define the ALIASES to EXPORT (must be referenced in the *.psd1 file).
 Set-Alias ins Invoke-NativeShell
 Set-Alias dbea Debug-ExecutableArguments
-# Note: 'ie'  and 'iet' are *directly* used as the *function* names,
+# Note: 'ie'  and 'iee' are *directly* used as the *function* names,
 #       deliberately forgoing verbose names, for the reasons explained
 #       in the comment-based help for 'ie'.
 #endregion
@@ -32,7 +32,7 @@ else {
   (printf %s '"ab"') -ne '"ab"'
 }
 
-#region Define the FUNCTIONS to EXPORT (must be referenced in the *.psd1 file)
+#region -- EXPORTED functions (must be referenced in the *.psd1 file)
 
 function Invoke-NativeShell {
   <#
@@ -44,97 +44,132 @@ Executes a command line or ad-hoc script using the platform-native shell,
 on Unix optionally with pass-through arguments.
 
 If no argument and no pipeline input is given, an interactive shell is entered.
+Otherwise, pass a *single string* comprising one more commands for the native
+shell to execute; e.g.:
+
+  ins 'whoami && echo hi'
+
+Add -ErrorOnFailure (-e) if you want a script-terminating error to be thrown
+in case the native shell reports a nonzero exit code.
+
+For command lines with tricky quoting, use here-strings; e.g., on Unix:
+
+  ins @'
+    printf '%s\n' "3\" of rain."
+  '@
+
+Use an interpolating (here-)string to incorporate PowerShell values; use `$
+for $ characters to pass throug to the native shell; e.g., on Unix:
+
+  ins @"
+    printf 'PS version: %s\n' "$($PSVersionTable.PSVersion)"
+  "@
+
+The native shell's exit code will be reflected in $LASTEXITCODE; use only 
+$LASTEXITCODE to infer success vs. failure, not $?, which always ends up 
+$true.
 
 Pipeline input is supported in two fundamental modes:
 
-* The pipeline is the *command line* to execute:
+* The pipeline input is the *command line* to execute (`<commands> | ins`):
 
   * In this case, no -CommandLine argument must be passed, or, if pass-through
-    arguments are specified (Unix only), it must be '-' to explicitly signal 
-    that the command line is coming from the pipeline (stdin).
+    arguments are specified, it must be '-' to explicitly signal that the
+    command line is coming from the pipeline (stdin)
+    (`<commands> | ins - passThruArg1 ...`).
+    Alternatively, use parameeter -Args explicitly with an array of values to
+    unambiguously identify them as pass-through arguments
+    (`<commands> | ins -Args passThruArg1, ...`).
 
-* The pipeline is *data* to pass *to* the command line to execute:
-
-  * In this case, the command line must be passed via -CommandLine.
-
-NOTE: 
-
-* By definition, such calls will be *platform-specific*.
-  To perform platform-agnostic calls to a single native executable, use the
-  'ie' function that comes with this module.
-
-* On Unix-like platforms, /bin/bash is used by default, due to its ubiquity.
-  If instead you want to use the official system default shell, /bin/sh, which
-  typically supports fewer features than Bash, pass -UseSh
-
-* The native shell's exit code will be reflected in $LASTEXITCODE; use only 
-  $LASTEXITCODE to infer success vs. failure, not $?, which always ends up 
-  $true.
-
-* When /bin/bash and /bin/sh accept a command line as a CLI argument, it is via 
-  the -c option, with subsequent positional arguments getting passed 
-  *to the command line* being invoked; curiously, however, the first such 
-  argument sets the invocation name that the command line sees as special 
-  parameter $0; it is only the *second* subsequent argument that becomes $1, 
-  the first true argument.
-  Since this is somewhat counterintuitive and since setting $0 in this scenaro 
-  is rarely, if ever, needed, this function leaves $0 at its default and passes
-  any pass-through arguments starting as parameter $1.
+* The pipeline input is *data* to pass *to* the command line to execute
+  (`<data> | ins <commands>`):
 
 .PARAMETER CommandLine
-The command line to pass to the native shell for execution.
+The command line or ad-hoc script to pass to the native shell for execution.
 
-On Unix-like platforms, this parameter can also act as an ad-hoc script to 
-which you may pass additional arguments that the script sees as
-parameter $1, ...
+Ad-hoc script means that the string you pass can act as a batch file / shell
+script that is capable of receiving any pass-through arguments passed via
+-ArgumentList (-Args) the usual way (e.g., %1 as the first argument on Windows,
+and $1 on Unix).
 
 You may omit this parameter and pass the command line via the pipeline instead.
-If you use the pipeline this way on Unix and you additionally want to specify
+If you use the pipeline this way on and you additionally want to specify
 pass-through arguments positionally, you can pass '-' as the -CommandLine
 argument to signal that the code is specified via the pipeline; alternatively,
-use the -ArgumentList / -Args parameter explicitly, which necessitates passing
-the arguments as an *array*.
+use the -ArgumentList (-Args) parameter explicitly, in which case you must
+specify the arguments as an *array*.
 
 IMPORTANT:
-  On Windows, the command line isn't executed directly by cmd.exe, 
-  but via a temporary *batch file*. This means that batch-file semantics rather
-  than command-prompt semantics will be in effect, notably needing %% rather 
-  than just % before `for` loop variables (e.g. %%i) and being able to escape
-  verbatim "%" characters as "%%"
+  * On Windows, the command line isn't executed directly by cmd.exe, 
+    but via a temporary *batch file*. This means that batch-file syntax rather
+    than command-prompt syntax will be in effect, notably needing %% rather 
+    than just % before `for` loop variables (e.g. %%i) and being able to escape
+    verbatim "%" characters as "%%"
 
 .PARAMETER ArgumentList
-Supported on Unix-like platforms only:
-
 Any addtional arguments to pass through to the ad-hoc script passed to
--CommandLine.
+-CommandLine or supplied via the pipeline.
 
 Important:
 
-* As stated, these arguments bind to the standard bash/sh parameters starting
-  with $1.
+* These arguments bind to the standard batch-file / shell-script 
+  parameters starting with %1 / $1. See the NOTES section for more information.
 
 * If you pass the pass-through arguments *individually, positionally*, 
   you may precede them with an extra '--' argument to avoid name conflicts with
-  this function's own parameters (which includes the supported common parameters).
+  this function's own parameters (which includes the supported common
+  parameters).
 
 * If the command line is supplied via the pipeline, you must either pass '-'
   as -CommandLine or use -ArgumentList / -Args explicitly and specify the 
   pass-through arguments *as an array*.
 
+.PARAMETER UseSh
+Supported on Unix-like platforms only (ignored on Windows); aliased to -sh.
+
+Uses /bin/sh rather than /bin/bash for execution.
+
+Note that /bin/sh, which is the official system shell on Unix-like platforms, 
+can be expected to support POSIX-compliant features only, which notably
+precludes certain Bash features, such as [[ ... ]] conditionals, process
+substitutions, <(...), and Bash-specific variables.
+
+Conversely, if your command line does work with -UseSh, it can be assumed 
+to work in any of the major POSIX-compatible shells: bash, dash, ksh, and zsh.
+
+.PARAMETER ErrorOnFailure
+Triggers a script-terminating error if the native shell indicates overall
+failure of the command line's execution via a nonzero exit code; aliased to
+-e.
+
+IMPORTANT: This switch acts independently of PowerShell's error handling, 
+which as of v7.1 does not act on nonzero exit codes reported by external
+executables.
+There is a pending RFC to change that:
+  https://github.com/PowerShell/PowerShell-RFC/pull/88
+Once it gets implemented, this commmand will
+be subject to this new integration in the absence of -ErrorOnFailure (-e).
+
 .PARAMETER InputObject
-An auxiliary parameter required for technical reasons.
+This is an auxiliary parameter required for technical reasons only.
 Do not use it directly.
 
 .EXAMPLE
-ins 'ver & date /t'
+ins 'ver & date /t & echo %CD%'
 
-On Windows, calls cmd.exe with the given command line,
-which ouputs version information and the current date.
+Windows example: Calls cmd.exe with the given command line, which ouputs 
+cmd.exe version information and prints the current date and working directory.
 
 .EXAMPLE
-'ver & date /t' | ins
+'ver & date /t & echo %CD%' | ins
 
-Equivalent command using pipeline input to pass the command line.
+Windows example: Equivalent command using pipeline input to pass the command
+line.
+
+.EXAMPLE
+'foo', 'bar' | ins 'findstr bar & ver'
+
+Windows example: Passes data to the command line via the pipeline (stdin).
 
 .EXAMPLE
 $msg = 'hi'; ins "echo $msg"
@@ -143,42 +178,72 @@ Uses string interpolation to incorporate a PowerShell variable value into
 the native command line.
 
 .EXAMPLE
+ins -e 'whoami -nosuchoption'
+
+Uses -e (-ErrorOnFailure) to request throwing an error if the native shell
+reports a nonzero exit code, as is the case here.
+
+.EXAMPLE
 ins 'ls / | cat -n'
 
-On Unix, calls Bash with the given command line,
-which lists the files and directories in the root directory and numbers the
-output lines.
+Unix example: Calls Bash with the given command line, which lists the files 
+and directories in the root directory and numbers the output lines.
 
 .EXAMPLE
 ins 'ls "$1" | cat -n; echo "$2"' $HOME 'Hi there.'
 
-Uses a pass-through argument to pass a PowerShell variable value to the 
-native command line. Note the use of '-' as the first pass-through argument,
-which determines the *name* of the ad hoc script, as reflected in $0.
-The second argument becomes $1, and so on.
+Unix example: uses a pass-through argument to pass a PowerShell variable value
+to the Bash command line.
 
 .EXAMPLE
 'ls "$1" | cat -n; echo "$2"' | ins -UseSh - $HOME 'Hi there.'
 
-Equivalent of the previous example with the command line passed via the
-pipeline, except that /bin/sh is used for execution.
+Unix example: Equivalent of the previous example with the command line passed 
+via the pipeline, except that /bin/sh is used for execution.
 Note that since the command line is provided via the pipeline and there are
 pass-through arguments present, '-' must be passed as the -CommandLine argument.
 
 .EXAMPLE
 'one', 'two', 'three' | ins 'grep three | cat -n'
 
-Sends data through the pipeline to pass to the native command line as stdin
-input.
+Unix example: Sends data through the pipeline to pass to the native command
+line as stdin input.
+
+.EXAMPLE
+ins @'
+  printf '%s\n' "6'1\" tall"
+'@
+
+Unix example: Uses a (verbatim) here-string to pass a command line with
+complex quoting to Bash.
 
 .NOTES
 
-* On Unix-like platforms, /bin/bash is targeted by default; if -UseSh is
-  specified or /bin/bash doesn't exist, /bin/sh is used.
+* By definition, calls to this function are *platform-specific*.
+  To perform platform-agnostic calls to a single external executable, use the
+  'ie' function that comes with this module.
 
-* On Windows, it is <systemRoot>\System32\cmd.exe, where <systemroot> is
+* On Unix-like platforms, /bin/bash is used by default, due to its ubiquity.
+  If you want to use the official system default shell, /bin/sh, instead, use 
+  -UseSh. Without -UseSh, /bin/sh is also used as a fallback in the unlikely
+  event that /bin/bash is not present.
+
+* When /bin/bash and /bin/sh accept a command line as a CLI argument, it is via 
+  the -c option, with subsequent positional arguments getting passed 
+  *to the command line* being invoked; curiously, however, the first such 
+  argument sets the *invocation name* that the command line sees as special 
+  parameter $0; it is only the *second* argument that becomes $1, the first 
+  true script parameter (argument).
+  Since this is somewhat counterintuitive and since setting $0 in this scenaro 
+  is rarely, if ever, needed, this function leaves $0 at its default (the path
+  of the executing shell) and passes any pass-through arguments (specified via
+  -ArgumentList / -Args or positionally) starting with parameter $1.
+
+* On Windows, <systemRoot>\System32\cmd.exe is used, where <systemroot> is
   the Windows directory path as stored in the 'SystemRoot' registry value at
-  'HKEY_LOCAL_MACHINE:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'
+  'HKEY_LOCAL_MACHINE:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'; the 
+  following options, which explicitly request cmd.exe's default behavior, are 
+  used to ensure a predictable execution environment: /d /e:on /v:off
 
 #>
 
@@ -187,27 +252,23 @@ input.
     [Parameter(Position = 1)]
     [string] $CommandLine
     ,
-    [Parameter(ValueFromRemainingArguments = $true)]
+    [Parameter(Position = 2, ValueFromRemainingArguments = $true)]
     [Alias('Args')]
     [string[]] $ArgumentList
     ,
+    [Alias('sh')]
     [switch] $UseSh
+    ,
+    [Alias('e')]
+    [switch] $ErrorOnFailure
     ,
     [Parameter(ValueFromPipeline = $true)] # Dummy parameter to ensure that pipeline input is accepted, even though we use $input to process it.
     $InputObject
   )
 
-  # On Windows, no additional arguments are supported.
-  if ($IsWindows -and $ArgumentList.Count) {
-    Throw (
-      (New-Object System.Management.Automation.ErrorRecord (
-        [System.PlatformNotSupportedException] "cmd.exe, the native Windows shell, doesn't support passing arguments to a command line.", 
-        'PlatformNotSupportedException', 
-        'InvalidArgument', 
-        'cmd.exe'
-      ))
-    )
-  }
+  # Note: If -UseSh is passed on Windows, we *ignore* it rather than throwing an error.
+  #       This makes it easier to create cross-platform commands in that only the command-line
+  #       string must be provided via a variable (with platform-appropriate content).
   
   $nativeShellExePath = if ($IsWindows) {
     # For increased robustness, rely on the SystemRoot definition (typically, C:\Windows)
@@ -221,7 +282,7 @@ input.
       })
   }
   else {
-    # Note: By default, due to its ubiquity, we try /bin/bash, unless -UseSh was passed.
+    # Note: By default, due to its ubiquity, we use /bin/bash, unless -UseSh was passed or /bin/bash doesn't exist (unlikely).
     if ($UseSh -or -not (Test-Path -PathType Leaf '/bin/bash')) {
       # The de-facto standard location for the default system shell on Unix-like platforms.
       '/bin/sh'
@@ -231,55 +292,97 @@ input.
     }
   }
 
+  # We invoke the native shell via 'ie' by default, or, if erroring out on
+  # nonzero exit codes is requsted, via 'iee'
+  $invokingFunction = ('ie', 'iee')[$ErrorOnFailure.IsPresent]
+
   $havePipelineInput = $MyInvocation.ExpectingInput
   $pipelineInputIsCommandLine = $havePipelineInput -and (-not $CommandLine -or $CommandLine -eq '-')
 
-  # If neither a command line nor pipeline input is given, enter an interactive
-  # session of the target shell.
   if (-not $havePipelineInput -and -not $CommandLine) { 
-
-    Write-Verbose "Entering an interactive $nativeShellExePath session..."
-    & $nativeShellExePath; return 
-
-  }
-  elseif ($pipelineInputIsCommandLine) {
-
-    Write-Verbose "Executing via $nativeShellExePath..."
-
-    $passThruArgs = if ($ArgumentList.Count) {
-      # If arguments are also passed, Bash / sh require -s as the explicit 
-      # signal that the script code is being passed via the pipeline (stdin).
-      , '-s' + $ArgumentList
-    }
-    else {
-      @()
-    }
-
-    $input | & $nativeShellExePath $passThruArgs
-
+    # If neither a command line nor pipeline input is given, enter an interactive
+    # session of the target shell.
+  
+    Write-Verbose "Entering interactive $nativeShellExePath session..."
+  
+    & $invokingFunction $nativeShellExePath
+  
   }
   else {
-    # $CommandLine with actual code given, possibly combined with *data* pipeline input.
+    # A command line / ad-hoc script must be passed to the native shell.
 
-    # On Windows, we use a temporary batch file to avoid re-quoting problems 
-    # that would arise if the command line were passed to cmd /c as an *argument*.
+    # NOTE: For platform-specific reasons, we translate a code-via-stdin (pipeline) (`... | ins`)
+    #       invocation to a code-by-argument / code-by-temporary-batch-file invocation.
+    if ($pipelineInputIsCommandLine) {
+
+      $pipelineInputIsCommandLine = $havePipelineInput = $false
+      $CommandLine = @($Input) -join "`n" # Collect all pipeline input and join the (stringified) objects with newlines.
+
+      # RATIONALE:
+      # Windows:
+      #   * cmd.exe doesn't properly support piping *commands* to it:
+      #     The "logo" is always printed, and lines are executed one after, with
+      #     the prompt string printed after each, and by default each command is 
+      #     also echoed before execution (only this aspect can be controlled, with /q)
+      #   * Similarly, passing multi-line strings to cmd /c isn't supported:
+      #     Only the *first* line is processed, the rest are *ignored*.
+      #   Since we're using a temporary *batch file* for invocation anyway, 
+      #   we can offer the same code-via-pipeline experience as with bash/sh:
+      #   Essentially, a multi-line ad-hoc batch file may be passed.
+      #
+      # Unix:
+      #   * While bash/sh are perfectable cable of receiving ad-hoc scripts via
+      #     stdin, we still translate the invocation into a `-c <string>`-based
+      #     one, so as to support commands that ask for *interactive input*.
+      #     If we used the pipeline/stdin, the *code itself*, by virtue of 
+      #     being received via stdin, would be used to automatically respond to
+      #     interactive prompts.
+
+    }
+    
     if ($IsWindows) {
+      # On Windows, we use a temporary batch file to avoid re-quoting problems 
+      # that would arise if the command line were passed to cmd /c as an *argument*.
+      # This invariably means that batch-file rather than command-line syntax is 
+      # expected, which, however, is arguably preferable anyway.
+
+      Write-Verbose "Passing commands via a temporary batch file to $nativeShellExePath..."
 
       $tmpBatchFile = [IO.Path]::GetTempFileName() + '.cmd'
 
       # Write the command line to the temp. batch file.
-      Set-Content -Encoding Oem -LiteralPath $tmpBatchFile -Value "@$CommandLine"
+      Set-Content -Encoding Oem -LiteralPath $tmpBatchFile -Value "@echo off`n$CommandLine"
 
-      # Note: For predictability, we use explicit switches in order to get what should be the default
-      #       behavior of cmd.exe on a pristine system:
-      #       /d == no auto-run, /e:on == enable command extensions; /v:off == disable delayed variable expansion
-      $input | & $nativeShellExePath /d /e:on /v:off /c $tmpBatchFile
+      # To be safe, use an empty array rather than $null for array splatting below.
+      if ($null -eq $ArgumentList) { $ArgumentList = @() }
+
+      # IMPORTANT: We must only use `$input | ...` if actual pipeline input 
+      #            is present. If no input is present, PowerShell *still
+      #            redirects* the target executable's stdin and simply makes it
+      #            *empty*. This causes command lines with *interactive* prompts
+      #            to malfunction.
+      #            Also: We cannot use an intermediate script block invoked
+      #                  with & here in order to avoid duplicating the actual
+      #                  command: the pipeline input is then NOT passed through
+      #                  (you'd have to use $input inside the script block too, which amounts to a catch-22).
+      if ($havePipelineInput) { 
+        # Note: For predictability, we use explicit switches in order to get what should be the default
+        #       behavior of cmd.exe on a pristine system:
+        #       /d == no auto-run, /e:on == enable command extensions; /v:off == disable delayed variable expansion
+        # IMPORTANT: Changes to this call must be replicated in the `else` branch.
+        $input | & $invokingFunction $nativeShellExePath /d /e:on /v:off /c $tmpBatchFile $ArgumentList
+      } 
+      else { 
+        & $invokingFunction $nativeShellExePath /d /e:on /v:off /c $tmpBatchFile $ArgumentList
+      }
 
       Remove-Item -ErrorAction Ignore -LiteralPath $tmpBatchFile
 
     }
     else {
       # Unix
+
+      Write-Verbose "Passing commands as an argument to $nativeShellExePath..."
 
       $passThruArgs = if ($ArgumentList.Count) {
         # POSIX-like shells interpret the first post `-c <code>` operand as $0,
@@ -293,19 +396,28 @@ input.
         @()
       }
   
-      if ($script:needQuotingWorkaround) {
-        $input | ie $nativeShellExePath -c $CommandLine $passThruArgs
-      }
-      else {
-        $input | & $nativeShellExePath -c $CommandLine $passThruArgs
+      # IMPORTANT: We must only use `$input | ...` if actual pipeline input 
+      #            is present. If no input is present, PowerShell *still
+      #            redirects* the target executable's stdin and simply makes it
+      #            *empty*. This causes command lines with *interactive* prompts
+      #            to malfunction.
+      #            Also: We cannot use an intermediate script block invoked
+      #                  with & here in order to avoid duplicating the actual
+      #                  command: the pipeline input is then NOT passed through.
+      #                  (you'd have to use $input inside the script block too).
+      if ($havePipelineInput) { 
+        # IMPORTANT: Changes to this call must be replicated in the `else` branch.
+        $input | & $invokingFunction $nativeShellExePath -c $CommandLine $passThruArgs
+      } 
+      else { 
+        & $invokingFunction $nativeShellExePath -c $CommandLine $passThruArgs
       }
 
     }
 
-
   }
-
 }
+
 
 function ie {
   <#
@@ -316,7 +428,7 @@ Invokes an external executable with robust argument passing.
 Invokes an external executable with arguments passed through properly, even if
 they contain embedded double quotes or they're the empty string.
 
-'ie' stands for 'Invoke (External) Executable'. The related 'iet' wrapper
+'ie' stands for 'Invoke (External) Executable'. The related 'iee' wrapper
 function additionally throws an error if the external executable indicated
 failure via a nonzero process exit code.
 
@@ -326,7 +438,7 @@ Note: Since the invocation solely relies on PowerShell's own argument-mode
       to Invoke-NativeShell / ins.
 
 Use this function by simply prefixing a call to an external executable with
-'ie' as the executable (if invocation via call operator '&' would
+'ie' as the command (if invocation via call operator '&' would
 normally be necessary, use 'ie' *instead* of it). E.g., on Unix:
 
   ie printf '"%s" ' print these arguments quoted
@@ -402,11 +514,11 @@ https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
   if (-not $exe) {
     Throw (
       (New-Object System.Management.Automation.ErrorRecord (
-        [System.Management.Automation.ParameterBindingException] "Missing mandary parameter: Please specify the external executable to invoke.",
-        'MissingMandatoryParameter',
-        'InvalidArgument',
-        $null
-      ))
+          [System.Management.Automation.ParameterBindingException] "Missing mandary parameter: Please specify the external executable to invoke.",
+          'MissingMandatoryParameter',
+          'InvalidArgument',
+          $null
+        ))
     )
   }
 
@@ -419,11 +531,11 @@ https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
     # Throw "This command supports external executables only; $exeDescr isn't one." 
     Throw (
       (New-Object System.Management.Automation.ErrorRecord (
-        [ArgumentException] "This command supports external executables (applications) only; $exeDescr is a command of type $($app.CommandType)",
-        'InvalidCommandType',
-        'InvalidArgument',
-        $exe
-      ))
+          [ArgumentException] "This command supports external executables (applications) only; $exeDescr is a command of type $($app.CommandType)",
+          'InvalidCommandType',
+          'InvalidArgument',
+          $exe
+        ))
     ) 
     # Note: 
     #  * Even if we wanted to support calls to PowerShell-native commands too, 
@@ -476,7 +588,7 @@ https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
     #   However, notable interpreters that support \" ONLY are Ruby and Perl (as well as PowerShell's own CLI, but it's better to call that with a script block from within PowerShell).
     #   Targeting a batch file triggers "" escaping, but note that in the case of stub batch files that simply relay to a different executable, that could still break
     #   if the ultimate target executable only supports \"
-    $useDoubledDoubleQuotes = $IsWindows -and ($app.Source -match '[/\\]?(?<exe>cmd|msiexec|msdeploy)(?:\.exe)?$' -or $app.Source -match '\.(?<ext>cmd|bat|py|pyw)$')
+    $useDoubledDoubleQuotes = $IsWindows -and ($app.Source -match '[/\\]?(?<exe>cmd|py|pythonw?|node|msiexec|msdeploy)(?:\.exe)?$' -or $app.Source -match '\.(?<ext>cmd|bat|py|pyw)$')
     $doubleQuoteEscapeSequence = ('\"', '""')[$useDoubledDoubleQuotes]
     $isMsiStyleExe = $useDoubledDoubleQuotes -and $Matches['exe'] -in 'msiexec', 'msdeploy'
     $isBatchFile = $useDoubledDoubleQuotes -and $Matches['ext'] -in 'cmd', 'bat'
@@ -537,11 +649,27 @@ https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
   # Note: We must use @escapedArgs rather than $escapedArgs, otherwise PowerShell won't apply
   #       Base64 encoding in the presence of a script-block argument when its CLI is called.
   #       Use of @ also results in --% getting removed, but we don't support it meaningfully anyway.
-  $input | & $exe @escapedArgs
+  if ($MyInvocation.ExpectingInput) {
+    # IMPORTANT: We must only use `$input | ...` if actual pipeline input 
+    #            is present. If no input is present, PowerShell *still
+    #            redirects* the target executable's stdin and simply makes it
+    #            *empty*. This causes command lines with *interactive* prompts
+    #            to malfunction.
+    #            Also: We cannot use an intermediate script block invoked
+    #                  with & here in order to avoid duplicating the actual
+    #                  command: the pipeline input is then NOT passed through
+    #                  (you'd have to use $input inside the script block too, which amounts to a catch-22).
+    # IMPORTANT: Changes to this call must be replicated in the `else` branch.
+    $input | & $exe @escapedArgs
+  }
+  else {
+    & $exe @escapedArgs
+  }
+
 
 }
 
-function iet {
+function iee {
   <#
 .SYNOPSIS
 Invokes an external executable robustly and throws an error if its exit code is 
@@ -558,7 +686,7 @@ NOTE: This function only works meaningfully with *console* (terminal) programs,
       is already known when the invocation returns.
 
 .EXAMPLE
-iet curl.exe -u jdoe 'https://api.github.com/user/repos' -d '{ "name": "foo"}'
+iee curl.exe -u jdoe 'https://api.github.com/user/repos' -d '{ "name": "foo"}'
 
 Invokes the external curl utility to create a new GitHub repo.
 If doing so fails, as indicated by curl's process exit code being nonzero,
@@ -574,16 +702,31 @@ https://github.com/PowerShell/PowerShell-RFC/pull/88
 
 #>
 
-  $Input | ie @args
+  if ($MyInvocation.ExpectingInput) {
+    # IMPORTANT: We must only use `$input | ...` if actual pipeline input 
+    #            is present. If no input is present, PowerShell *still
+    #            redirects* the target executable's stdin and simply makes it
+    #            *empty*. This causes command lines with *interactive* prompts
+    #            to malfunction.
+    #            Also: We cannot use an intermediate script block invoked
+    #                  with & here in order to avoid duplicating the actual
+    #                  command: the pipeline input is then NOT passed through
+    #                  (you'd have to use $input inside the script block too, which amounts to a catch-22).
+    # IMPORTANT: Changes to this call must be replicated in the `else` branch.
+    $input | ie @args
+  }
+  else {
+    ie @args
+  }
 
   if ($LASTEXITCODE) {
     Throw (
       (New-Object System.Management.Automation.ErrorRecord (
-        [System.Management.Automation.ApplicationFailedException] "`"$($args[0])`" terminated with nonzero exit code $LASTEXITCODE.",
-        'NativeCommandError',
-        'OperationStopped',
-        "$args"  # Report the full command, though note that this is just a space-separated list of the verbatim arguments, without quoting and escaping.
-      ))
+          [System.Management.Automation.ApplicationFailedException] "`"$($args[0])`" terminated with nonzero exit code $LASTEXITCODE.",
+          'NativeCommandFailed',
+          'OperationStopped',
+          "$args"  # Report the full command, though note that this is just a space-separated list of the verbatim arguments, without quoting and escaping.
+        ))
     )
   }
 
@@ -592,7 +735,7 @@ https://github.com/PowerShell/PowerShell-RFC/pull/88
 function Debug-ExecutableArguments {
   <#
 .SYNOPSIS
-Debugs Executable Argument passing.
+Debugs external-executable argument passing.
 
 .DESCRIPTION
 Acts as an external executable that prints the arguments passed to it in 
@@ -604,8 +747,8 @@ On Unix, there is no point in doing so, as processes there do not receive a
 single command line that encodes all arguments, but an array of verbatim
 strings.
 
-The output is a single, multi-line string formatted for easy readability by
-humans.
+The default output is formatted for easy readability by humans.
+Using -Raw prints the raw argument values only.
 
 This function is useful for diagnosing the problems with passing empty-string
 arguments and arguments with embedded double quotes to external executables
@@ -614,10 +757,11 @@ that exist up to at least v7.0 and are detailed here:
 https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
 
 You can avoid these problems altogether if you use the 'ie' function to call
-external executables.
+external executables, whose use behind the scenes you can request with -UseIe.
 
-A helper executable (Windows) / shell script (Unix), created on demand, is used
-behind the scenes to receive and print the given arguments.
+Hidden helper executables / scripts, created on demand, are used to receive and
+print the given arguments. By default, a helper binary is used on Windows, 
+and an ad-hoc /bin/sh script on Unix.
 
 On Windows, you can specify -UseBatchFile to use a batch file instead, or
 -UseWrapperBatchFile to use an intermediate batch file to pass the arguments
@@ -638,9 +782,9 @@ and:
 In the latter form, in the unlikely event that you need to disambiguate
 pass-through arguments from the parameters supported by this command itself,
 prepend the pass-through arguments with a '--' argument; e.g., to pass
-'-UseBatchFile` as a pass-through argument:
+'-Raw` as a pass-through argument:
 
-  Debug-ExecutableArguments -- -UseBatchFile one two three
+  Debug-ExecutableArguments -- -Raw one two three
 
 .PARAMETER UseBatchFile
 On Windows, uses a batch file rather than the helper binary to print the 
@@ -655,6 +799,13 @@ arguments it receives *through* to the helper binary.
 This is useful for testing how CLIs that use a wrapper batch file as their 
 entry point ultimately receive arguments. The Azure CLI is a prominent
 example.
+
+.PARAMETER Raw
+Prints the arguments only, as-is, eacho on its own line. 
+No delimiters are used and no other information is printed.
+
+This makes the output suitable for programmatic processing, but only as long
+none of the arguments span multiple lines.
 
 .EXAMPLE
 Debug-ExecutableArguments -u '' 'https://api.github.com/user/repos' -d '{ "name": "foo" }'
@@ -692,32 +843,39 @@ the re-creation on the next invocation.
 
 #>
 
-  [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName='Default')]
+  [CmdletBinding(PositionalBinding = $false, DefaultParameterSetName = 'Default')]
   param(
     [Parameter(Mandatory, ValueFromRemainingArguments)]
     [Alias('Args')]
     $ArgumentList
     ,
-    [Parameter(ParameterSetName='BatchFile', Mandatory)]
+    [Parameter(ParameterSetName = 'BatchFile', Mandatory)]
     [switch] $UseBatchFile
     ,
-    [Parameter(ParameterSetName='WrapperBatchFile', Mandatory)]
+    [Parameter(ParameterSetName = 'WrapperBatchFile', Mandatory)]
     [switch] $UseWrapperBatchFile
     ,
+    [Alias('ie')]
     [switch] $UseIe
+    ,
+    [switch] $Raw
   )
   
   if (($UseBatchFile -or $UseWrapperBatchFile) -and -not $IsWindows) {
     Throw (
       (New-Object System.Management.Automation.ErrorRecord (
-        [System.PlatformNotSupportedException] "The -UseBatchFile and -UseWrapperBatchFile parameters are supported on Windows only.", 
-        'PlatformNotSupportedException', 
-        'InvalidArgument', 
-        $null
-      ))
+          [System.PlatformNotSupportedException] "The -UseBatchFile and -UseWrapperBatchFile parameters are supported on Windows only.", 
+          'PlatformNotSupportedException', 
+          'InvalidArgument', 
+          $null
+        ))
     )
   }
-      
+
+  # Communicate -Raw, i.e. the desire to print just the raw arguments recived -
+  # via an *environment variable* to the helper executable / scripts.
+  if ($Raw) { $env:_dbea_raw = 1 }
+
   if ($IsWindows) {
     
     # Note: Unless explicitly requested to use a batch file only, we need a 
@@ -739,42 +897,56 @@ the re-creation on the next invocation.
       }
       else {
         # Create the argument-echoing batch file on demand.
-        @'
-    @echo off
-    setlocal
-    
-    call :count_args %*
-    echo %ReturnValue% argument(s) received (enclosed in ^<...^> for delineation):
-    echo.
-    
-    :for_arg
-    
-      if %1.==. goto for_arg_done
-    
-      echo   ^<%1^>
-    
-      shift
-    goto for_arg
-    :for_arg_done
-    
-    echo.
-    
-    goto :eof
-    
-    :count_args
-      set /a ReturnValue = 0
-      :count_args_for
-    
-        if %1.==. goto :eof
-    
-        set /a ReturnValue += 1
-    
-        shift
-      goto count_args_for
-'@
-        Write-Verbose "Executing argument-echoing batch file: $tmpBatchFile"
-      }
+        if ($Raw) {
+          @'
+@echo off
+:for_arg
 
+  if %1.==. goto :eof
+
+  echo %1
+
+  shift
+goto for_arg
+'@
+        }
+        else {
+          @'
+@echo off
+setlocal
+
+call :count_args %*
+echo %ReturnValue% argument(s) received (enclosed in ^<...^> for delineation):
+echo.
+
+:for_arg
+
+  if %1.==. goto for_arg_done
+
+  echo   ^<%1^>
+
+  shift
+goto for_arg
+:for_arg_done
+
+echo.
+
+goto :eof
+
+:count_args
+  set /a ReturnValue = 0
+  :count_args_for
+
+    if %1.==. goto :eof
+
+    set /a ReturnValue += 1
+
+    shift
+  goto count_args_for
+'@
+          Write-Verbose "Executing argument-echoing batch file: $tmpBatchFile"
+        }
+      }
       Set-Content -Encoding Oem -LiteralPath $tmpBatchFile -Value $content
     
       # Note: We explicitly use @ArgumentList rather than $ArgumentList,
@@ -811,13 +983,21 @@ the re-creation on the next invocation.
     # Note: For consistency, and since --% is technically (albeit mostly uselessly)
     #       supported on Unix too, we also use @ArgumentList rather than $ArgumentList on Unix.
     $script = @'
-printf '%s\n\n' "$# argument(s) passed (enclosed in <...> for delineation):"
+if [ -z "$_dbea_raw" ]; then
+  printf '%s\n\n' "$# argument(s) passed (enclosed in <...> for delineation):"
+fi
 
 for a; do 
-  printf '%s\n' "  <$a>"
+  if [ -z "$_dbea_raw" ]; then
+    printf '%s\n' "  <$a>"
+  else
+    printf '%s\n' "$a"
+  fi
 done
 
-printf '%s\n'
+if [ -z "$_dbea_raw" ]; then
+  printf '%s\n'
+fi
 '@
     if ($UseIe) {
       $script | ie /bin/sh -s -- @ArgumentList
@@ -828,9 +1008,12 @@ printf '%s\n'
 
   }
 
+  if ($Raw) { $env:_dbea_raw = $null }
+
 }
 
-#endregion Functions to export
+#endregion -- EXPORTED functions
+
 
 # Internal Windows-only function that returns the path to the helper binary, 
 # which is created on demand.
@@ -865,18 +1048,34 @@ using System.Text.RegularExpressions;
 static class ConsoleApp {
   static int Main(string[] args) {
 
-    Console.WriteLine("{0} argument(s) received (enclosed in <...> for delineation):\n", args.Length);
+    bool raw = "1" == Environment.GetEnvironmentVariable("_dbea_raw", EnvironmentVariableTarget.Process);
 
-    for (int i = 0; i < args.Length; ++i) {
-      Console.WriteLine("  <{0}>", args[i]);
+    if (! raw) 
+    {
+      Console.WriteLine("{0} argument(s) received (enclosed in <...> for delineation):\n", args.Length);
     }
 
-    // Get the full command line and strip the executable (which is always the
-    // full, double-quoted path, based on how PowerShell executes external programs).
-    string cmdLine = Environment.CommandLine;
-    cmdLine = cmdLine.Substring(Regex.Match(cmdLine, "\".+?\"").Value.Length).TrimStart();
+    for (int i = 0; i < args.Length; ++i) {
+      if (raw)
+      {
+        Console.WriteLine(args[i]);
+      }
+      else
+      {
+        Console.WriteLine("  <{0}>", args[i]);
+      }
+    }
 
-    Console.WriteLine("\nCommand line (executable omitted):\n\n  {0}\n", cmdLine);
+    if (! raw)
+    {
+      // Get the full command line and strip the executable (which is either
+      //  - when invoked by PowerShell: the full, double-quoted path.
+      //  - when invoked via a batch file: the path is not necessarily quoted.
+      string cmdLine = Environment.CommandLine;
+      cmdLine = cmdLine.Substring(Regex.Match(cmdLine, "\".+?\"|[^\\s]+").Value.Length).TrimStart();
+  
+      Console.WriteLine("\nCommand line (helper executable omitted):\n\n  {0}\n", cmdLine);
+    }
 
     return 0;
   }
@@ -887,7 +1086,7 @@ static class ConsoleApp {
       # !! As of PowerShell Core 7.1.0-preview.5, -OutputType ConsoleApplication produces
       # !! broken executables in PowerShel *Core* - see https://github.com/PowerShell/PowerShell/issues/13344
       # !! The workaround is to delegate to Windows PowerShell.
-      iet powershell.exe -noprofile -c $sb -args $exePath
+      iee powershell.exe -noprofile -c $sb -args $exePath
     }
     else {
       # Windows PowerShell: execute the script block directly.

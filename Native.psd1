@@ -4,7 +4,7 @@
 RootModule = 'Native.psm1'
 
 # Version number of this module.
-ModuleVersion = '0.1.0'
+ModuleVersion = '1.0.0'
 
 # Supported PSEditions
 CompatiblePSEditions = @( 'Core', 'Desktop' )
@@ -24,7 +24,7 @@ Description = 'Functionality related to passing command lines to the native shel
 # Minimum version of the PowerShell engine required by this module
 PowerShellVersion = '3.0'
 
-FunctionsToExport = 'Invoke-NativeShell', 'ie', 'iet', 'Debug-ExecutableArguments'
+FunctionsToExport = 'Invoke-NativeShell', 'ie', 'iee', 'Debug-ExecutableArguments'
 AliasesToExport = 'ins', 'dbea'
 
 CmdletsToExport = @()
@@ -36,7 +36,7 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        Tags = 'native','shell','invoke', 'invocation', 'call'
+        Tags = 'native', 'shell', 'invoke', 'invocation', 'executable', 'quoting'
 
         # A URL to the license for this module.
         LicenseUri = 'https://github.com/mklement0/Native/blob/master/LICENSE'
