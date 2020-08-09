@@ -508,7 +508,7 @@ function get-NuGetApiKey {
     # Prompt the user.
     $configPsdFile = $props.Files.globalConfig
     # e.g. 5ecf36c5-437f-0123-7654-c91df8f79ca4
-    $regex = '^[a-z0-9]{8}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{4}-[a-z0-9]{12}$'
+    $regex = '^[a-z\d]{46}$'
     while ($true) {
       $nuGetApiKey = (Read-Host -Prompt "Enter your NuGet API Key (will be saved in '$configPsdFile')").Trim()
       if ($nuGetApiKey -match $regex) { break }
