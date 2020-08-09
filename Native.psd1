@@ -38,7 +38,7 @@ PrivateData = @{
     PSData = @{
 
         # Tags applied to this module. These help with module discovery in online galleries.
-        Tags = 'native', 'shell', 'invoke', 'invocation', 'executable', 'quoting'
+        Tags = 'native', 'shell', 'invoke', 'invocation', 'executable', 'quoting', 'escaping'
 
         # A URL to the license for this module.
         LicenseUri = 'https://github.com/mklement0/Native/blob/master/LICENSE'
