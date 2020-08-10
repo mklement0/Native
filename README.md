@@ -151,7 +151,7 @@ PS> Install-Module Native -Scope CurrentUser
 #     Right-click on the Windows PowerShell icon and select "Run as Administrator".
 #   On Linux and macOS:
 #     Run `sudo pwsh` from an existing terminal.
-ELEV-PS> Install-Module Native
+ELEV-PS> Install-Module Native -Scope AllUsers
 ```
 
 See also: [this repo's page in the PowerShell Gallery](https://www.powershellgallery.com/packages/Native).
