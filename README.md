@@ -2,11 +2,13 @@
 
 # `Native` - a PowerShell Module for Native-Shell and External-Executable Calls
 
-`Native` is a **cross-edition, cross-platform PowerShell module** (PowerShell **version 3 and above**) that comes with the following commands:
+`Native` is a **cross-edition, cross-platform PowerShell module** for PowerShell **version 3 and above**.
 
-To **install** for the current user, run `Install-Module Native -Scope CurrentUser` - see [Installation](#Installation) for details
+To **install** for the current user, run `Install-Module Native -Scope CurrentUser` - see [Installation](#Installation) for details.
 
-* **`ins` (`Invoke-NativeShell`)** presents a unified inteface to the platform-native shell, allowing you to pass a command line either as as an argument - a single string - or via the pipeline:
+The module comes with the following commands:
+
+* **`ins` (`Invoke-NativeShell`)** presents a unified interface to the platform-native shell, allowing you to pass a command line either as as an argument - a single string - or via the pipeline:
   * Examples:
     * Unix: `ins 'ls -d / | cat -n'` or `'ls -d / | cat -n' | ins`
     * Windows: `ins 'ver & whoami'` or `'ver & whoami' | ins`
@@ -20,7 +22,7 @@ To **install** for the current user, run `Install-Module Native -Scope CurrentUs
 
     * On Windows, a temporary _batch file_ rather than a direct `cmd.exe /c` call is used behind the scenes, (not just) for technical reasons. This means that batch-file syntax must be used, which notably means that loop variables must use `%%`, not just `%`, and that you may escape `%` as `%%` - arguably, this is for the better anyway. The only caveat is that aborting a long-running command with <kbd>Ctrl-C</kbd> will present the infamous `Terminate batch file (y/n)?` prompt; simple repeat <kbd>Ctrl-C</kbd> to complete the termination.
 
-* **`ie`** (short for: **I**nvoke (external) **E**xeutable) robustly passes arguments through to external executables, with proper support for arguments with embedded `"` (double quotes) and for empty-string arguments:
+* **`ie`** (short for: **I**nvoke (external) **E**xecutable) robustly passes arguments through to external executables, with proper support for arguments with embedded `"` (double quotes) and for empty-string arguments:
 
   * Examples (without the use of `ie`, these commands wouldn't work as expected, as of PowerShell 7.0):
     * Unix: `'a"b' | ie grep 'a"b'`
@@ -77,10 +79,11 @@ To **install** for the current user, run `Install-Module Native -Scope CurrentUs
 ---
 
 All commands come with **help**; examples, based on `ins`:
-  * `ins -?` shows brief, syntax-focused help.
-  * `help ins -Examples` shows examples.
-  * `help ins -Parameter UseSh` shows help for parameter `-UseSh`.
-  * `help ins -Full` shows comprehensive help that includes individual parameter descriptions.
+
+* `ins -?` shows brief, syntax-focused help.
+* `help ins -Examples` shows examples.
+* `help ins -Parameter UseSh` shows help for parameter `-UseSh`.
+* `help ins -Full` shows comprehensive help that includes individual parameter descriptions.
 
 ---
 
@@ -147,7 +150,7 @@ PS> Install-Module Native -Scope CurrentUser
 ```powershell
 # Installation for ALL users.
 # IMPORTANT: Requires an ELEVATED session:
-#   On Windows: 
+#   On Windows:
 #     Right-click on the Windows PowerShell icon and select "Run as Administrator".
 #   On Linux and macOS:
 #     Run `sudo pwsh` from an existing terminal.
