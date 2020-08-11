@@ -1,9 +1,10 @@
 ﻿Set-StrictMode -Version 1
 $ErrorActionPreference = 'Stop'
 
-# For older WinPS versions: set OS/edition flags (which in PSCore are automatically defined).
-if (-not (Test-Path Variable:IsWindows)) { $IsWindows = $true }
-if (-not (Test-Path Variable:IsCoreCLR)) { $IsCoreCLR = $false }
+# For older WinPS versions: Set OS/edition flags (which in PSCore are automatically defined).
+# !! At least with Pester v5.x, script-level variables must explicitly created with scope $script:
+if (-not (Test-Path Variable:IsWindows)) { $script:IsWindows = $true }
+if (-not (Test-Path Variable:IsCoreCLR)) { $script:IsCoreCLR = $false }
 
 # Force-(re)import this module.
 Remove-Module -ea Ignore -Force (Split-Path -Leaf $PSScriptRoot)

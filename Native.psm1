@@ -9,30 +9,38 @@
 
 Set-StrictMode -Version 1
 
-#region Define the ALIASES to EXPORT (must be referenced in the *.psd1 file).
-Set-Alias ins Invoke-NativeShell
-Set-Alias dbea Debug-ExecutableArguments
-# Note: 'ie'  and 'iee' are *directly* used as the *function* names,
-#       deliberately forgoing verbose names, for the reasons explained
-#       in the comment-based help for 'ie'.
-#endregion
-
-# For older WinPS versions: set OS/edition flags (which in PSCore are automatically defined).
-if (-not (Test-Path Variable:IsWindows)) { $IsWindows = $true }
-if (-not (Test-Path Variable:IsCoreCLR)) { $IsCoreCLR = $false }
+# For older WinPS versions: Set OS/edition flags (which in PSCore are automatically defined).
+# Note: Unlike in the Pester test files, $script: isn't strictly needed here, but silences 
+#       the PSSA warning re assigning to automatic variables.
+if (-not (Test-Path Variable:IsWindows)) { $script:IsWindows = $true }
+if (-not (Test-Path Variable:IsCoreCLR)) { $script:IsCoreCLR = $false }
 
 # Test if a workaround for PowerShell's broken argument passing to external
 # programs as described in
 #   https://github.com/PowerShell/PowerShell/issues/1995
 # is still required.
 $script:needQuotingWorkaround = if ($IsWindows) {
-  (choice.exe /d Y /t 0 /m 'Nat "King" Cole') -notmatch '"'
+  (choice.exe /d Y /t 0 /m 'Nat "King" Cole') -notmatch '"' # the `choice` command is a trick to print an argument as-is.
 }
 else {
   (printf %s '"ab"') -ne '"ab"'
 }
 
-#region -- EXPORTED functions (must be referenced in the *.psd1 file)
+#region -- EXPORTED members (must be referenced in the *.psd1 file too)
+
+# -- Define the ALIASES to EXPORT (must be exported in the *.psd1 file too).
+
+Set-Alias ins Invoke-NativeShell
+Set-Alias dbea Debug-ExecutableArguments
+
+# SEE THE BOTTOM OF THIS #region FOR AN Export-ModuleMember CALL REQUIRED
+# FOR PSv3/4 COMPATIBILITY.
+
+# Note: 'ie'  and 'iee' are *directly* used as the *function* names,
+#       deliberately forgoing verbose names, for the reasons explained
+#       in the comment-based help for 'ie'.
+
+# --
 
 function Invoke-NativeShell {
   <#
@@ -1012,7 +1020,20 @@ fi
 
 }
 
-#endregion -- EXPORTED functions
+# !! For PSv3 and PSv4, the aliases must be exported explicitly with 
+# !! Export-ModuleMember - referencing them in the *.psd1 file is NOT enough.
+# !! Since use of Export-ModuleMember overrides the implicit exports, the
+# !! function must then also be specified.
+# !! By doing this *here*, `-Function *` includes all functions defined
+# !! *so far* in this file, which are the ones we want to export.
+if ($PSVersionTable.PSVersion.Major -le 4) {
+  Export-ModuleMember -Alias * -Function *
+}
+
+# -- endregion
+
+
+#endregion -- EXPORTED members
 
 
 # Internal Windows-only function that returns the path to the helper binary, 
