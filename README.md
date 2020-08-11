@@ -6,7 +6,7 @@
 
 To **install** for the current user, run `Install-Module Native -Scope CurrentUser` - see [Installation](#Installation) for details
 
-* **`ins` (`Invoke-NativeShell`)** presents a unified inteface to the platform-native shell, allowing you to pass a command line either as as an argument - a single string - or via the pipeline:
+* **`ins` (`Invoke-NativeShell`)** presents a unified interface to the platform-native shell, allowing you to pass a command line either as as an argument (a single string) or via the pipeline:
   * Examples:
     * Unix: `ins 'ls -d / | cat -n'` or `'ls -d / | cat -n' | ins`
     * Windows: `ins 'ver & whoami'` or `'ver & whoami' | ins`
@@ -14,30 +14,30 @@ To **install** for the current user, run `Install-Module Native -Scope CurrentUs
   * Add `-e` (`-ErrorOnFailure`) if you want `ins` to throw a script-terminating error if the native shell reports a nonzero exit code (if `$LASTEXITCODE` is nonzero).
 
   * Note:
-    * Because you're passing a command (line) written for a _different shell_, which has different syntax rules, it must be passed _as a whole_, as a single string. To avoid quoting issues and to facilitate passing multi-line commands with line continuations, you can use a _here-string_ - see below. You can use _expandable_ (here-)strings in order to embed _PowerShell_ variable and expression values in the command line; in that case, escape `$` characters you want to pass through to the native shell as `` `$ ``.
+    * Because you are passing a command (line) written for a _different shell_, which has different syntax rules, it must be passed _as a whole_, as a single string. To avoid quoting issues and to facilitate passing multi-line commands with line continuations, you can use a _here-string_ - see below. You can use _expandable_ (here-)strings in order to embed _PowerShell_ variable and expression values in the command line; in that case, escape `$` characters you want to pass through to the native shell as `` `$ ``.
 
     * On Unix-like platforms, `/bin/bash` rather than `/bin/sh` is used as the native shell, given Bash's ubiquity. Use `-UseSh` to use `/bin/sh` instead.
 
-    * On Windows, a temporary _batch file_ rather than a direct `cmd.exe /c` call is used behind the scenes, (not just) for technical reasons. This means that batch-file syntax must be used, which notably means that loop variables must use `%%`, not just `%`, and that you may escape `%` as `%%` - arguably, this is for the better anyway. The only caveat is that aborting a long-running command with <kbd>Ctrl-C</kbd> will present the infamous `Terminate batch file (y/n)?` prompt; simple repeat <kbd>Ctrl-C</kbd> to complete the termination.
+    * On Windows, a temporary _batch file_ rather than a direct `cmd.exe /c` call is used behind the scenes, (not just) for technical reasons. This means that batch-file syntax must be used, which notably means that loop variables must use `%%`, not just `%`, and that you may escape `%` as `%%` - arguably, this is for the better anyway. The only caveat is that aborting a long-running command with <kbd>[Ctrl[C]]</kbd> will present the infamous `Terminate batch file (y/n)?` prompt; simply repeat <kbd>[Ctrl[C]]</kbd> to complete the termination.
 
-* **`ie`** (short for: **I**nvoke (external) **E**xeutable) robustly passes arguments through to external executables, with proper support for arguments with embedded `"` (double quotes) and for empty-string arguments:
+* **`ie`** (short for: **I**nvoke (external) **E**xeutable) robustly passes arguments through to external executables, with proper support for arguments with embedded `"` (double quotes) and for empty string arguments:
 
-  * Examples (without the use of `ie`, these commands wouldn't work as expected, as of PowerShell 7.0):
+  * Examples (without the use of `ie`, these commands would not work as expected, as of PowerShell 7.0):
     * Unix: `'a"b' | ie grep 'a"b'`
     * Windows: `'a"b' | ie findstr 'a"b'`
 
   * Note:
-    * Unlike `ins`, `ie` expects you to use _PowerShell's_ syntax and pass the arguments _individually_, as you normally would in direct invocation; in other words: simply place `ie` as the command name before how you would normally invoke the external executable (if the normal invocation would synctactically require `&`, use `ie` _instead_ of `&`.)
+    * Unlike `ins`, `ie` expects you to use _PowerShell_ syntax and pass arguments _individually_, as you normally would in a direct invocation; in other words: simply place `ie` as the command name before how you would normally invoke the external executable (if the normal invocation would synctactically require `&`, use `ie` _instead_ of `&`.)
     * There should be no need for such a function, but it is currently required because PowerShell's built-in 
-  argument passing is still broken as of PowerShell 7.0, [as summarized in this GitHub issue](https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
+  argument passing is still broken as of PowerShell 7.0, [as summarized in GitHub issue 1995](https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
 
   * Use the closely related **`iee`** function (the extra "e" standing for "error") if you want a script-terminating error to be thrown if the external executable reports a nonzero exit code (if `$LASTEXITCODE` is nonzero); e.g., the following command would throw an error:
-    * `iee git clone http://example.org/no-git-repo-here`
+    * `iee net mumble`
 
 * **`dbea` (`Debug-ExecutableArguments`)** is a diagnostic command for understanding and troubleshooting how PowerShell passes arguments to external executables, similar to the venerable [`echoArgs.exe` utility](https://chocolatey.org/packages/echoargs).
 
-  * Pass arguments as you would to an external executable to see how they would be received by it and, on Windows only, what the entire command line that PowerShell constructed behind the scenes looks like (this doesn't apply on Unix, where executables don't receive a single command line containing all arguments, but - more sensibly - an array of individual arguments).  
-  Use `-UseIe` in order to see how invocation via `ie` corrects the problems that plague direct invocation as of PowerShell 7.0.
+  * Pass arguments as you would to an external executable to see how they would be received by it and, on Windows only, what the entire command line that PowerShell constructed behind the scenes looks like (this does not apply on Unix, where executables do not receive a single command line containing all arguments, but - more reliably - an array of individual arguments).  
+  Use `-UseIe` in order to see how invocation via `ie` corrects the problems that affect direct invocation as of PowerShell 7.0.
 
   * Examples:
     * `dbea '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'`
@@ -112,10 +112,10 @@ printf '%s\n' \
 
 ## Setting up a `PSReadline` Keyboard Shortcut for Scaffolding an `ins` Call with a Here-String.
 
-If you place the following call in your `$PROFILE` file, you'll be able to use <kbd>Alt-v</kbd> to scaffold a call to `ins` with a verbatim here-string into which the current clipboard text is pasted.
+If you place the following call in your `$PROFILE` file, you can use <kbd>[Alt[V]]</kbd> to scaffold a call to `ins` with a verbatim here-string into which the current clipboard text is pasted.
 <kbd>Enter</kbd> submits the call.
 
-This is convenient for quick execution of command lines that were written for the platform-native shell, such as found in documentation or on stackoverflow.com, without having to worry about adapting the syntax to PowerShell's.
+This is convenient for quick execution of command lines that were written for the platform-native shell, such as found in documentation or on [Stack Overflow](http://stackoverflow.com/), without having to worry about adapting the syntax to PowerShell.
 
 ```powershell
 # Scaffolds an ins (Invoke-NativeShell) call with a verbatim here-string
@@ -166,7 +166,7 @@ Clone this repository (as a subfolder) into one of the directories listed in the
 * **macOs, Linux** (PowerShell Core): 
   * `$HOME/.local/share/powershell/Modules`
 
-As long as you've cloned into one of the directories listed in the `$env:PSModulePath` variable - copying to some of which requires elevation / `sudo` - and as long your `$PSModuleAutoLoadingPreference` is either has no value (the default) or is set to `All`, calling `ins` or `ie` should import the module on demand.
+As long as you have cloned into one of the directories listed in the `$env:PSModulePath` variable—copying to some of which requires elevation / `sudo`—and as long your `$PSModuleAutoLoadingPreference` either has no value (the default) or is set to `All`, calling `ins` or `ie` should import the module on demand.
 
 To explicitly import the module, run `Import-Module <path/to/module-folder>`.
 
@@ -176,7 +176,10 @@ Note: Assumes that [`git`](https://git-scm.com/) is installed.
 
 ```powershell
 # Switch to the parent directory of the current user's modules.
-Set-Location $(if ($env:OS -eq 'Windows_NT') { "$HOME\Documents\{0}\Modules" -f ('WindowsPowerShell', 'PowerShell')[[bool]$IsCoreClr] } else { "$HOME/.local/share/powershell/Modules" })
+Set-Location $(
+  if ($env:OS -eq 'Windows_NT') { 
+    "$HOME\Documents\{0}\Modules" -f ('WindowsPowerShell', 'PowerShell')[[bool]$IsCoreClr]
+  } else { "$HOME/.local/share/powershell/Modules" })
 # Clone this repo into subdir. 'Native'; --depth 1 gets only the latest revision.
 git clone --depth 1 --quiet https://github.com/mklement0/Native
 ```
