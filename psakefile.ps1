@@ -143,7 +143,7 @@ About to PUBLISH TO THE POWERSHELL GALLERY:
     * you've run ``Push-Location (Split-Path (Get-Module -ListAvailable $($props.moduleName)).Path); if (`$?) { Invoke-Pester }``
       and verified that the TESTS PASS:
        * on ALL PLATFORMS and
-       * on WINDOWS, both in PowerShell Core and Windows PowerShell
+       * on WINDOWS, both in PowerShell Core and Windows PowerShell, as well as in v3 and v4
 
 Proceed?
 "@
