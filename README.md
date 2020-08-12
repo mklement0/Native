@@ -28,7 +28,7 @@ The module comes with the following commands:
   * Note:
     * Because you're passing a command (line) written for a _different shell_, which has different syntax rules, it must be passed _as a whole_, as a single string. To avoid quoting issues and to facilitate passing multi-line commands with line continuations, you can use a _here-string_ - see below. You can use _expandable_ (here-)strings in order to embed _PowerShell_ variable and expression values in the command line; in that case, escape `$` characters you want to pass through to the native shell as `` `$ ``.
 
-    * On Unix-like platforms, `/bin/bash` rather than `/bin/sh` is used as the native shell, given Bash's ubiquity. Use `-UseSh` to use `/bin/sh` instead.
+    * On Unix-like platforms, `/bin/bash` rather than `/bin/sh` is used as the native shell, given Bash's ubiquity. Use `-sh` (`-UseSh`) to use `/bin/sh` instead.
 
     * On Windows, a temporary _batch file_ rather than a direct `cmd.exe /c` call is used behind the scenes, (not just) for technical reasons. This means that batch-file syntax must be used, which notably means that loop variables must use `%%`, not just `%`, and that you may escape `%` as `%%` - arguably, this is for the better anyway. The only caveat is that aborting a long-running command with <kbd>Ctrl-C</kbd> will present the infamous `Terminate batch file (y/n)?` prompt; simple repeat <kbd>Ctrl-C</kbd> to complete the termination.
 
@@ -49,7 +49,7 @@ The module comes with the following commands:
 * **`dbea` (`Debug-ExecutableArguments`)** is a diagnostic command for understanding and troubleshooting how PowerShell passes arguments to external executables, similar to the venerable [`echoArgs.exe` utility](https://chocolatey.org/packages/echoargs).
 
   * Pass arguments as you would to an external executable to see how they would be received by it and, on Windows only, what the entire command line that PowerShell constructed behind the scenes looks like (this doesn't apply on Unix, where executables don't receive a single command line containing all arguments, but - more sensibly - an array of individual arguments).  
-  Use `-UseIe` in order to see how invocation via `ie` corrects the problems that plague direct invocation as of PowerShell 7.0.
+  Use `-ie` (`-UseIe`) in order to see how invocation via `ie` corrects the problems that plague direct invocation as of PowerShell 7.0.
 
   * Examples:
     * `dbea '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'`
@@ -69,9 +69,9 @@ The module comes with the following commands:
 
               a&b 3" of snow "Nat "King" Cole" "c:\temp 1\\" "a \" b"
 
-    * `dbea -UseIe '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'`
+    * `dbea -ie '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'`
 
-      * Thanks to use of `ie`, you'll see the following output, with the arguments passed correcty:
+      * Thanks to use of `ie`, you'll see the following output in PowerShell v6+, with the arguments passed correctly (note: in _Windows PowerShell_ you'll still see a problem, namely with `'3" of snow'`, which Windows PowerShell neglects to enclose in `"..."` behind the scenes, due to the non-initial `"` not being preceded by a space):
 
             6 argument(s) received (enclosed in <...> for delineation):
 
