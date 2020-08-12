@@ -14,6 +14,16 @@ The module comes with the following commands:
     * Windows: `ins 'ver & whoami'` or `'ver & whoami' | ins`
 
   * Add `-e` (`-ErrorOnFailure`) if you want `ins` to throw a script-terminating error if the native shell reports a nonzero exit code (if `$LASTEXITCODE` is nonzero).
+  
+  * You can also pipe *data* to `ins`, in which case the command line must be passed as an argument
+    * Examples:
+      * Unix: `'foo', 'bar' | ins 'grep bar'`
+      * Windows: `'foo', 'bar' | ins 'findstr "bar"'`
+      
+  * You can also treat the native command line like an improvised _script_ (batch file) to which you can pass arguments; if you pipe the script, you must use `-` as the first positional argument to signal that the script is being received via the pipeline (stdin):
+    * Examples:
+      * Unix: `ins 'echo "[$1] [$2]"' one two` or `'echo "[$1] [$2]"' | ins - one two`
+      * Windows: `ins 'echo [%1] [%2]' one two` or `'echo "[%1] [%2]"' | ins - one two`
 
   * Note:
     * Because you're passing a command (line) written for a _different shell_, which has different syntax rules, it must be passed _as a whole_, as a single string. To avoid quoting issues and to facilitate passing multi-line commands with line continuations, you can use a _here-string_ - see below. You can use _expandable_ (here-)strings in order to embed _PowerShell_ variable and expression values in the command line; in that case, escape `$` characters you want to pass through to the native shell as `` `$ ``.
