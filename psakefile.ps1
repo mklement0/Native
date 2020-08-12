@@ -171,7 +171,7 @@ PUBLISHING SUCCEEDED.
 
 Note that it can take a few minutes for the new module [version] to appear in the gallery.
 
-URL: https://www.powershellgallery.com/packages/$($props.moduleName)"
+URL: https://www.powershellgallery.com/packages/$($props.moduleName)
 "@
 
 }
