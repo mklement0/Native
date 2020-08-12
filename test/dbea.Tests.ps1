@@ -8,7 +8,8 @@ if (-not (Test-Path Variable:IsCoreCLR)) { $script:IsCoreCLR = $false }
 
 # Force-(re)import this module.
 Remove-Module -ea Ignore -Force (Split-Path -Leaf $PSScriptRoot)
-Import-Module $PSScriptRoot/..
+# Target the *.psd1 file explicitly, so the tests can run from versioned subfolders too. Note that the ModuleInfo's .Path property will reflect the *.psm1 instead.
+Import-Module (Get-Item $PSScriptRoot/../*.psd1)
 
 Describe 'dbea (Debug-ExecutableArguments) tests' {
 

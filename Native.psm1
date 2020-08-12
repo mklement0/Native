@@ -596,7 +596,8 @@ https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
     #   However, notable interpreters that support \" ONLY are Ruby and Perl (as well as PowerShell's own CLI, but it's better to call that with a script block from within PowerShell).
     #   Targeting a batch file triggers "" escaping, but note that in the case of stub batch files that simply relay to a different executable, that could still break
     #   if the ultimate target executable only supports \"
-    $useDoubledDoubleQuotes = $IsWindows -and ($app.Source -match '[/\\]?(?<exe>cmd|py|pythonw?|node|msiexec|msdeploy)(?:\.exe)?$' -or $app.Source -match '\.(?<ext>cmd|bat|py|pyw)$')
+    # Note: Use $app.Path rather than $app.Source, because pre-v5.1 versions report the executable path only in the former.
+    $useDoubledDoubleQuotes = $IsWindows -and ($app.Path -match '[/\\]?(?<exe>cmd|py|pythonw?|node|msiexec|msdeploy)(?:\.exe)?$' -or $app.Path -match '\.(?<ext>cmd|bat|py|pyw)$')
     $doubleQuoteEscapeSequence = ('\"', '""')[$useDoubledDoubleQuotes]
     $isMsiStyleExe = $useDoubledDoubleQuotes -and $Matches['exe'] -in 'msiexec', 'msdeploy'
     $isBatchFile = $useDoubledDoubleQuotes -and $Matches['ext'] -in 'cmd', 'bat'
