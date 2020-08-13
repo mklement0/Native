@@ -458,9 +458,12 @@ IMPORTANT:
   `<word>="<value with spaces>"` (`<word>` may be composed of letters, digits,
   underscores, and hyphens), for the benefit of high-profile CLIs such as
   as msiexec.exe and msdeploy.exe. So there should generally be no need for
-   --%, the stop-parsing symbol - which this function does *not* support.
+  --%, the stop-parsing symbol - which this function does *not* support.
   In other words: use EITHER this function OR, if you truly need --%, use it
   with direct invocation only.
+
+* -- as an argument is invariably removed by PowerShell on invocation. If
+  you need to pass -- through to the executable, pass it *twice*.
 
 * External executable in this context means any executable that PowerShell must
   invoke via a child process, which encompasses not just binary executables,
@@ -490,7 +493,7 @@ CAVEATS:
     executable being invoked.
 
 .EXAMPLE
-ie echoArgs.exe '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'
+ie echoArgs.exe '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'  'a"b'
 
 Calls the echoArgs.exe executable on Windows, which echoes the individual 
 arguments it receives in diagnostic form as follows, showing that the arguments
@@ -502,21 +505,49 @@ were passed as intended:
     Arg 3 is <Nat "King" Cole>
     Arg 4 is <c:\temp 1\>
     Arg 5 is <a \" b>
+    Arg 6 is <a"b>
 
     Command line:
-    "C:\ProgramData\chocolatey\lib\echoargs\tools\EchoArgs.exe" "" a&b "3\" of snow" "Nat \"King\" Cole" "c:\temp 1\\" "a \\\" b"
+    "C:\ProgramData\chocolatey\lib\echoargs\tools\EchoArgs.exe" "" a&b "3\" of snow" "Nat \"King\" Cole" "c:\temp 1\\" "a \\\" b" a\"b
 
 Note: echoArgs.exe is installable via Chocolatey using the following commmand
 from an elevated session:
 
     choco install echoargs -y 
 
+However, the dbea (Debug-NativeExecutable) command that comes with the same module
+as this function provides the same functionality, and the equivalent invocation
+would be:
+
+dbea -ie -- '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'  'a"b'
+
 .NOTES
 
 For background information on the broken argument handling, see:
 https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
 
+There is one - presumably quite rare - edge case that cannot be handled
+correctly in Windows PowerShell:
+
+* If the target executable requires escaping embedded " as \" and
+* ... the argument has a non-initial embedded " not preceded by a space char;
+      e.g., `3" of snow`; in that event, Windows PowerShell neglects to
+      enclose the whole argument in double quotes, so that *3* arguments end
+      up getting passed.
+
+Only the following target executables trigger \" escaping: 
+ruby, perl, pwsh, powershell.
+
+Conversely, PowerShell Core isn't affected, so \" is always used there.
+
 #>
+
+# IMPORTANT: 
+  #  We deliberately declare NO parameters, because any parameter could interfere
+  #  with the pass-through arguments and then - unexpectedly and cumbersomely - require -- before these arguments.
+  #  The problem is that even a single-character prefix of a declared parameter name would be bound to it.
+  #  E.g., a -WhatIf parameter would be bound by -w
+  # param()
 
   # Split into executable name/path and arguments.
   # Note: We can't assume that $argsForExe will be a flat array - see below.
@@ -550,8 +581,8 @@ https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
     ) 
     # Note: 
     #  * Even if we wanted to support calls to PowerShell-native commands too, 
-    #    we can't, given that this simple function is based on the array of positional arguments, $args. 
-    #    While @args is built-in magic for passing even *named* arguments through,
+    #    we cannot, given that this simple function is based on the array of positional arguments, $args. 
+    #    While @args has built-in magic for passing even *named* arguments through,
     #    we need to split $args into executable name and remaining arguments here, and the magic doesn't work with custom arrays.
   }
   
@@ -593,17 +624,26 @@ https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
 
     # Escape arguments properly properly to pass them through as seen verbatim by PowerShell.
     # Decide whether to escape embedded double quotes as \" or as "", based on the target executable.
-    # * On Unix-like platforms, we always use \"
-    # * On Windows, we use "" where we know it's safe to do. cmd.exe / batch files require "", and Microsoft compiler-generated executables do too, often in addition to supporting \",
-    #   notably including Python and Node.js. 
-    #   However, notable interpreters that support \" ONLY are Ruby and Perl (as well as PowerShell's own CLI, but it's better to call that with a script block from within PowerShell).
-    #   Targeting a batch file triggers "" escaping, but note that in the case of stub batch files that simply relay to a different executable, that could still break
-    #   if the ultimate target executable only supports \"
-    #   (In the end, except for cmd.exe and batch-file calls, always using \" should be fine, given that cmd.exe isn't involved in the call.)
     # Note: Use $app.Path rather than $app.Source, because pre-v5.1 versions report the executable path only in the former.
-    $useDoubledDoubleQuotes = $IsWindows -and ($app.Path -match '[/\\]?(?<exe>cmd|py|pythonw?|node|msiexec|msdeploy)(?:\.exe)?$' -or $app.Path -match '\.(?<ext>cmd|bat|py|pyw)$')
+    $null = $app.Path -match '[/\\]?(?<exe>[^/\\]+?)(?<ext>\.[^.]+)?$'
+    $isBatchFile = $IsWindows -and $Matches['ext'] -in '.cmd', '.bat'
+    $useDoubledDoubleQuotes = if ($IsCoreCLR) {
+      # PSCore:
+      # * On Unix: we always use \" (which ProcessStartInfo.Arguments recognizes when it parses the pseudo command line into the array of arguments).
+      # * On Windows: We only use "" if we have to: for batch files and direct cmd.exe calls.
+      #               The assumption is that all executables support \" (typically in *addition* to the Windows-only "").
+      #               Batch-file caveat: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), the "" quoting
+      #                                could still break if the ultimate target executable only supports \"
+      $IsWindows -and ($isBatchFile -or ($Matches['exe'] -eq 'cmd' -and $Matches['ext'] -in $null, '.exe'))
+    }
+    else {
+      # WinPS:
+      # So as to eliminate edge cases where \" doesn't work due to PowerShell's re-quoting (see below) as much as possible, 
+      # we REVERSE the logic and use "" by default, except for known exceptions: Ruby, Perl, and the PowerShell CLIs (both editions) themselves, which all support \" only.
+      # All other executables are assumed to support "".
+      -not ($Matches['exe'] -in 'perl', 'ruby', 'powershell', 'pwsh' -and $Matches['ext'] -in $null, '.exe') -and -not ($Matches['ext'] -in '.pl', '.rb')      
+    }
     $doubleQuoteEscapeSequence = ('\"', '""')[$useDoubledDoubleQuotes]
-    $isBatchFile = $useDoubledDoubleQuotes -and $Matches['ext'] -in 'cmd', 'bat'
 
     foreach ($arg in $argsForExe) {
       if ($arg -isnot [string]) {
@@ -613,23 +653,44 @@ https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
       $hasDoubleQuotes = $arg.Contains('"')
       $hasSpaces = $arg.Contains(' ')
       if ($hasDoubleQuotes) {
+
         # First, always double any preexisting `\` instances before embedded `"` chars.
         # so that `\"` isn't interpreted as an escaped `"`.
         $arg = $arg -replace '(\\+)"', '$1$1"'
+
         # Then, escape the embedded `"` chars. either as `\"` or as `""`.
         # If \" escaping is used:
-        # * In PS Core, use of `\"` is safe, because its use triggers enclosing double-quoting (if spaces are also present).
-        # * !! In WinPS, sadly, that isn't true, so something like `'foo="bar none"'` results in `foo=\"bar none\"` -
-        #   !! which - due to the lack of enclosing "..." - is seen as *2* arguments by the target app, `foo="bar` and `none"`.
-        #   !! Similarly, '3" of snow' would result in `3\" of snow`, which the target app receives as *3* arguments, `3"`, `of`, and `snow`.
-        #   !! Even manually enclosing the value in *embedded* " doesn't help, because that then triggers *additional* double-quoting.
+        #  * In PS Core, use of `\"` is safe, because its use triggers enclosing double-quoting (if spaces are also present).
+        #  * !! In WinPS, sadly, that isn't true, leaving us with edge cases we cannot handle - see below.
+        # If "" escaping is used:
+        #  * Works fine in both editions *if spaces are present* (enclosing double-quoting *is* triggered)
+        #  * Otherwise, explicit enclosure is required - see below.
         $arg = $arg -replace '"', $doubleQuoteEscapeSequence
+
+        # A *spaceless* verbatim argument such as `a"b`, escaped by as `a""b`, does NOT trigger enclosing in double quotes, so 
+        # we must do it manually, which both editions pass through.
+        if ($useDoubledDoubleQuotes -and -not $hasSpaces) {
+          $arg = '"{0}"' -f $arg
+        }
+
+        # !! WinPS is broken with *verbatim* arguments such as `3" of snow` (from '3" of snow') and `foo="bar none"` (from 'foo="bar none"' - note that these " would be *data*, not syntax), 
+        # !! which it *doesn't* wrap in "..." if the embedded " are \"-escaped (or not escaped at all).
+        # !! The bug seems to be triggered by a non-initial " not preceded by a space.
+        # !! Note that with ""-escaped 
+        # !! Unfortunately, we can NOT compensate for that, because trying to pass `"3\" of snow"` - with embedded
+        # !! outer quoting - then causes the engine to add *additional* outer "..." quoting, ultimately and invariably passing `""3\" of snow""`, which is broken 
+        # if (-not $IsCoreCLR -and -not $useDoubledDoubleQuotes -and $hasSpaces -and $arg -match '^[^ "]+"') {
+        #   $arg = '"{0}"' -f $arg # !! DOES NOT WORK.
+        # }
+
+
       }
       elseif ($IsWindows -and $arg -match '^([-\w]+)=(.* .*)$') {
         # To accommodate programs such as msiexec and msdeploy, which expect arguments such as `PROP="value with spaces"`
         # with exactly that style of quoting, and fail with the form `"PROP=value with spaces"` that PowerShell passes
         # behind the scenes from `PROP="value with spaces"` (or `PROP='value with spaces'`) as the original argument.
         # We reconstruct the form `PROP="value with spaces"`, which both WinPS And PS Core pass through as-is.
+        # In additon to \w, we also allow "-" in the PROP part, which also covers GNU-style --foo="bar baz" parameters (though they probably don't need it).
         # Note: Rather than hard-code a list of CLIs to apply this fix to, we rely on all well-behaved CLIs to be 
         #       capable of parsing compound tokens such as `PROP="value with spaces"` ultimately as verbatim 
         #      `PROP=value with spaces`.
@@ -682,7 +743,6 @@ https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
     & $exe @escapedArgs
   }
 
-
 }
 
 function iee {
@@ -717,6 +777,7 @@ handled:
 https://github.com/PowerShell/PowerShell-RFC/pull/88
 
 #>
+  # IMPORTANT: See the comments inside `ie` for why we must NOT declare any parameters.
 
   if ($MyInvocation.ExpectingInput) {
     # IMPORTANT: We must only use `$input | ...` if actual pipeline input 
@@ -751,12 +812,16 @@ https://github.com/PowerShell/PowerShell-RFC/pull/88
 function Debug-ExecutableArguments {
   <#
 .SYNOPSIS
-Debugs external-executable argument passing.
+Debugs external-executable argument passing. Aliased to: dbea
 
 .DESCRIPTION
 Acts as an external executable that prints the arguments passed to it in 
 diagnostic form, similar to what the well-known third-party echoArgs.exe 
 utility does on Windows.
+
+IMPORTANT: To prevent confusion between this command's own parameters
+           and pass-through arguments, precede the latter with --
+           E.g.: dbea -- sed -i 's/a/b/' 'file 1.txt'
 
 On Windows, the whole command line is printed as well.
 On Unix, there is no point in doing so, as processes there do not receive a
@@ -773,7 +838,8 @@ that exist up to at least v7.0 and are detailed here:
 https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
 
 You can avoid these problems altogether if you use the 'ie' function to call
-external executables, whose use behind the scenes you can request with -UseIe.
+external executables, whose use behind the scenes you can request with -ie 
+(-UseIe).
 
 Hidden helper executables / scripts, created on demand, are used to receive and
 print the given arguments. By default, a helper binary is used on Windows, 
@@ -793,14 +859,12 @@ That is, the following two invocations are equivalent:
 
 and:
 
-  Debug-ExecutableArguments one two three
+  Debug-ExecutableArguments -- one two three
 
-In the latter form, in the unlikely event that you need to disambiguate
-pass-through arguments from the parameters supported by this command itself,
-prepend the pass-through arguments with a '--' argument; e.g., to pass
-'-Raw` as a pass-through argument:
-
-  Debug-ExecutableArguments -- -Raw one two three
+Note: The '--' isn't strictly necessary in this example, but it reliably
+      disambiguates pass-through arguments from this command's own parameters.
+      E.g., without '--', an intended pass-through argument '-r' would bind
+      to the -Raw switch. 
 
 .PARAMETER UseBatchFile
 On Windows, uses a batch file rather than the helper binary to print the 
@@ -824,7 +888,7 @@ This makes the output suitable for programmatic processing, but only as long
 none of the arguments span multiple lines.
 
 .EXAMPLE
-Debug-ExecutableArguments -u '' 'https://api.github.com/user/repos' -d '{ "name": "foo" }'
+Debug-ExecutableArguments -- -u '' 'https://api.github.com/user/repos' -d '{ "name": "foo" }'
 
 On Unix, you'll see the following output as of v7.0:
 
@@ -848,14 +912,32 @@ behind the scenes to use double quotes, resulted in their effective removal
 (because the argument was intrepreted as a composite string composed of
 double-quoted and unquoted parts).
 
+.EXAMPLE
+Debug-ExecutableArguments -UseIe -Raw -- -u '' 'https://api.github.com/user/repos' -d '{ "name": "foo" }'
+
+Same arguments as in the previous example, but with the -UseIe (-ie) switch
+added to compensate for the broken argument passing via the ie function, 
+and the -Raw switch to print the arguments received verbatim, without decoration.
+
+On both Windows and Unix you'll see the following output as of v7.0, which shows
+that the arguments were now passed correctly (the empty line represents the 
+empty-string argument):
+
+  -u
+
+  https://api.github.com/user/repos
+  -d
+  { "name": "foo" }
+
 .NOTES
 
-On Windows, a helper executable is created on demand in the following location:
+On Windows, a helper executable in the form of a .NET console appplication
+is created on demand in the following location:
 
   $env:TEMP\f7fd420a-47e4-4216-bd57-c88696123608\dbea.exe
 
 You can delete it anytime, but note that you'll pay a performance penalty for
-the re-creation on the next invocation.
+its re-creation on the next invocation.
 
 #>
 
@@ -1016,7 +1098,9 @@ if [ -z "$_dbea_raw" ]; then
 fi
 '@
     if ($UseIe) {
-      $script | ie /bin/sh -s -- @ArgumentList
+      # !! The use of ie necessitates an extra '--', so that the other '--'
+      # !! doesn't get "eaten" by PowerShell's parameter binding.
+      $script | ie /bin/sh -s -- -- @ArgumentList
     } 
     else {
       $script | /bin/sh -s -- @ArgumentList

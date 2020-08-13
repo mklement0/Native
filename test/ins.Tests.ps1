@@ -7,9 +7,11 @@ if (-not (Test-Path Variable:IsWindows)) { $script:IsWindows = $true }
 if (-not (Test-Path Variable:IsCoreCLR)) { $script:IsCoreCLR = $false }
 
 # Force-(re)import this module.
-Remove-Module -ea Ignore -Force (Split-Path -Leaf $PSScriptRoot)
-# Target the *.psd1 file explicitly, so the tests can run from versioned subfolders too. Note that the ModuleInfo's .Path property will reflect the *.psm1 instead.
-Import-Module (Get-Item $PSScriptRoot/../*.psd1)
+# Target the *.psd1 file explicitly, so the tests can run from versioned subfolders too. Note that the
+# loaded module's ModuleInfo's .Path property will reflect the *.psm1 instead.
+$manifest = (Get-Item $PSScriptRoot/../*.psd1)
+Remove-Module -ea Ignore -Force $manifest.BaseName # Note: To be safe, we unload any modules with the same name first (they could be in a different location and end up side by side in memory with this one.)
+Import-Module $manifest
 
 Describe 'ins (Invoke-NativeShell) tests' {
 

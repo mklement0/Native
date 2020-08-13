@@ -4,7 +4,7 @@
 
 `Native` is a **cross-edition, cross-platform PowerShell module** for PowerShell **version 3 and above**.
 
-To **install** for the current user, run `Install-Module Native -Scope CurrentUser` - see [Installation](#Installation) for details.
+To **install** it for the current user, run `Install-Module Native -Scope CurrentUser` - see [Installation](#Installation) for details.
 
 The module comes with the following commands:
 
@@ -19,7 +19,7 @@ The module comes with the following commands:
     * Examples:
       * Unix: `'foo', 'bar' | ins 'grep bar'`
       * Windows: `'foo', 'bar' | ins 'findstr "bar"'`
-      
+
   * You can also treat the native command line like an improvised _script_ (batch file) to which you can pass arguments; if you pipe the script, you must use `-` as the first positional argument to signal that the script is being received via the pipeline (stdin):
     * Examples:
       * Unix: `ins 'echo "[$1] [$2]"' one two` or `'echo "[$1] [$2]"' | ins - one two`
@@ -40,8 +40,9 @@ The module comes with the following commands:
 
   * Note:
     * Unlike `ins`, `ie` expects you to use _PowerShell's_ syntax and pass the arguments _individually_, as you normally would in direct invocation; in other words: simply place `ie` as the command name before how you would normally invoke the external executable (if the normal invocation would synctactically require `&`, use `ie` _instead_ of `&`.)
-    * There should be no need for such a function, but it is currently required because PowerShell's built-in 
-  argument passing is still broken as of PowerShell 7.0, [as summarized in this GitHub issue](https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
+    * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.0, [as summarized in this GitHub issue](https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
+    * For technical reasons, passing `--` is invariably removed by PowerShell; to pass `--` through to the target executable, specify it _twice_.
+    * `ie` automatically handles special quoting needs for batch files and for executables such as `msiexec.exe` and `msdeploy.exe`; run `ie -?` for details.
 
   * Use the closely related **`iee`** function (the extra "e" standing for "error") if you want a script-terminating error to be thrown if the external executable reports a nonzero exit code (if `$LASTEXITCODE` is nonzero); e.g., the following command would throw an error:
     * `iee git clone http://example.org/no-git-repo-here`
@@ -49,10 +50,11 @@ The module comes with the following commands:
 * **`dbea` (`Debug-ExecutableArguments`)** is a diagnostic command for understanding and troubleshooting how PowerShell passes arguments to external executables, similar to the venerable [`echoArgs.exe` utility](https://chocolatey.org/packages/echoargs).
 
   * Pass arguments as you would to an external executable to see how they would be received by it and, on Windows only, what the entire command line that PowerShell constructed behind the scenes looks like (this doesn't apply on Unix, where executables don't receive a single command line containing all arguments, but - more sensibly - an array of individual arguments).  
-  Use `-ie` (`-UseIe`) in order to see how invocation via `ie` corrects the problems that plague direct invocation as of PowerShell 7.0.
+  Use `-ie` (`-UseIe`) in order to see how invocation via `ie` corrects the problems that plague direct invocation as of PowerShell 7.0.  
+  To prevent pass-through arguments from mistaken for the command's own parameters, place `--` before the pass-through arguments, as shown in the examples.
 
   * Examples:
-    * `dbea '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'`
+    * `dbea -- '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b' 'a"b'`
       * On Windows, you'll see the following output - note how the arguments were _not_ passed as intended:
 
             7 argument(s) received (enclosed in <...> for delineation):
@@ -63,15 +65,15 @@ The module comes with the following commands:
               <Cole c:\temp>
               <1\ a>
               <">
-              <b>
+              <b ab>
 
             Command line (helper executable omitted):
 
-              a&b 3" of snow "Nat "King" Cole" "c:\temp 1\\" "a \" b"
+              a&b 3" of snow "Nat "King" Cole" "c:\temp 1\\" "a \" b" a"b
 
-    * `dbea -ie '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'`
+    * `dbea -ie -- '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b' 'a"b'`
 
-      * Thanks to use of `ie`, you'll see the following output in PowerShell v6+, with the arguments passed correctly (note: in _Windows PowerShell_ you'll still see a problem, namely with `'3" of snow'`, which Windows PowerShell neglects to enclose in `"..."` behind the scenes, due to the non-initial `"` not being preceded by a space):
+      * Thanks to use of `ie`, you'll see the following output, with the arguments passed correctly:
 
             6 argument(s) received (enclosed in <...> for delineation):
 
@@ -81,10 +83,11 @@ The module comes with the following commands:
               <Nat "King" Cole>
               <c:\temp 1\>
               <a \" b>
+              <a"b>
 
             Command line (helper executable omitted):
 
-              "" a&b "3\" of snow" "Nat \"King\" Cole" "c:\temp 1\\" "a \\\" b"
+              "" a&b "3\" of snow" "Nat \"King\" Cole" "c:\temp 1\\" "a \\\" b" a\"b
 
 ---
 
