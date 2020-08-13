@@ -453,10 +453,13 @@ normally be necessary, use 'ie' *instead* of it). E.g., on Unix:
 
 IMPORTANT: 
 
-* On Windows, this function also handles special quoting needs for 
-  msiexec.exe / msdeploy.exe and batch files, so there should generally be no 
-  need for --%, the stop-parsing symbol - which this function does *not* support.
-  In other words: EITHER use this function OR, if you truly need --%, use it
+* On Windows, this function also handles special quoting needs for batch files
+  and passes arguments of the form `<word>=<value with spaces>` as 
+  `<word>="<value with spaces>"` (`<word>` may be composed of letters, digits,
+  underscores, and hyphens), for the benefit of high-profile CLIs such as
+  as msiexec.exe and msdeploy.exe. So there should generally be no need for
+   --%, the stop-parsing symbol - which this function does *not* support.
+  In other words: use EITHER this function OR, if you truly need --%, use it
   with direct invocation only.
 
 * External executable in this context means any executable that PowerShell must
@@ -592,14 +595,14 @@ https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
     # Decide whether to escape embedded double quotes as \" or as "", based on the target executable.
     # * On Unix-like platforms, we always use \"
     # * On Windows, we use "" where we know it's safe to do. cmd.exe / batch files require "", and Microsoft compiler-generated executables do too, often in addition to supporting \",
-    #   notably including Python and Node.js
+    #   notably including Python and Node.js. 
     #   However, notable interpreters that support \" ONLY are Ruby and Perl (as well as PowerShell's own CLI, but it's better to call that with a script block from within PowerShell).
     #   Targeting a batch file triggers "" escaping, but note that in the case of stub batch files that simply relay to a different executable, that could still break
     #   if the ultimate target executable only supports \"
+    #   (In the end, except for cmd.exe and batch-file calls, always using \" should be fine, given that cmd.exe isn't involved in the call.)
     # Note: Use $app.Path rather than $app.Source, because pre-v5.1 versions report the executable path only in the former.
     $useDoubledDoubleQuotes = $IsWindows -and ($app.Path -match '[/\\]?(?<exe>cmd|py|pythonw?|node|msiexec|msdeploy)(?:\.exe)?$' -or $app.Path -match '\.(?<ext>cmd|bat|py|pyw)$')
     $doubleQuoteEscapeSequence = ('\"', '""')[$useDoubledDoubleQuotes]
-    $isMsiStyleExe = $useDoubledDoubleQuotes -and $Matches['exe'] -in 'msiexec', 'msdeploy'
     $isBatchFile = $useDoubledDoubleQuotes -and $Matches['ext'] -in 'cmd', 'bat'
 
     foreach ($arg in $argsForExe) {
@@ -622,10 +625,14 @@ https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
         #   !! Even manually enclosing the value in *embedded* " doesn't help, because that then triggers *additional* double-quoting.
         $arg = $arg -replace '"', $doubleQuoteEscapeSequence
       }
-      elseif ($isMsiStyleExe -and $arg -match '^(\w+)=(.* .*)$') {
-        # An msiexec / msdeploy argument originally passed in the form `PROP="value with spaces"`, which PowerShell turned into `PROP=value with spaces`
-        # This would be passed as `"PROP=value with spaces"`, which these programs, sadly, don't recognize (`PROP=valueWithoutSpaces` works fine, however).
+      elseif ($IsWindows -and $arg -match '^([-\w]+)=(.* .*)$') {
+        # To accommodate programs such as msiexec and msdeploy, which expect arguments such as `PROP="value with spaces"`
+        # with exactly that style of quoting, and fail with the form `"PROP=value with spaces"` that PowerShell passes
+        # behind the scenes from `PROP="value with spaces"` (or `PROP='value with spaces'`) as the original argument.
         # We reconstruct the form `PROP="value with spaces"`, which both WinPS And PS Core pass through as-is.
+        # Note: Rather than hard-code a list of CLIs to apply this fix to, we rely on all well-behaved CLIs to be 
+        #       capable of parsing compound tokens such as `PROP="value with spaces"` ultimately as verbatim 
+        #      `PROP=value with spaces`.
         $arg = '{0}="{1}"' -f $Matches[1], $Matches[2]
       }
       # For batch files, explicitly enclose in "..." those arguments that PowerShell would pass unquoted due to absence of whitespace
