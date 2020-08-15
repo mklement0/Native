@@ -15,49 +15,92 @@ Import-Module $manifest
 
 Describe 'ie tests' {
 
-  It 'Only permits calls to external executables' {
-    { ie whoami } | Should -Not -Throw
-    { ie Get-Date } | Should -Throw -ErrorId InvalidCommandType
-    { ie select } | Should -Throw -ErrorId InvalidCommandType
-    { ie help } | Should -Throw -ErrorId InvalidCommandType
+  Context "PlatformNeutral" {
+
+    It 'Only permits calls to external executables' {
+      { ie whoami } | Should -Not -Throw
+      { ie Get-Date } | Should -Throw -ErrorId InvalidCommandType
+      { ie select } | Should -Throw -ErrorId InvalidCommandType
+      { ie help } | Should -Throw -ErrorId InvalidCommandType
+    }
+  
+    It 'Properly passes arguments to external executables' {
+  
+      # Note: Avoid arguments with embedded newlines, because dbea -Raw
+      #       doesn't support them due to line-by-line output.
+      $exeArgs = '', 'a&b', '3 " of snow', 'Nat "King" Cole', 'c:\temp 1\', 'a \" b', 'a"b'
+  
+      $result = dbea -Raw -UseIe -- $exeArgs
+  
+      Compare-Object $exeArgs $result | ForEach-Object { '{0} <{1}>' -f $_.SideIndicator, $_.InputObject } | Should -BeNull
+    }  
+  
+    It 'Properly passes scripts with complex quoting to various interpreters (if installed)' {
+      $ohtCmds = [ordered] @{
+        # CLIs that require \" and are escaped that way in both editions.
+        ruby       = { ie ruby -e 'puts "hi there"' }
+        perl       = { ie perl -E 'say "hi there"' }
+        pwsh       = { ie pwsh -noprofile -c '"hi there"' }
+        powershell = { ie powershell -noprofile -c '"hi there"' }
+  
+        # CLIs that also accept "" and are used with that escaping in *WinPS*
+        node       = { ie node -pe '"hi there"' }
+        python     = { ie python -c 'print("hi there")' }
+      }
+  
+      foreach ($exe in $ohtCmds.Keys) {
+        if (Get-Command -ea Ignore -Type Application $exe) {
+          "Testing with $exe...." | Write-Verbose -vb
+          & $ohtCmds[$exe] | Should -BeExactly 'hi there'
+        }
+      } 
+  
+    }
   }
 
-  It 'Properly passes arguments to external executables' {
+  Context "Windows" -Skip:(-not $IsWindows) {
 
-    # Note: Avoid arguments with embedded newlines, because dbea -Raw
-    #       doesn't support them due to line-by-line output.
-    # !! In WinPS, the one edge case `ie` cannot handle is '3" of snow', which WinPS passes as `3" of snow` - without 
-    # !! enclosing double quotes, due to the embedded (non-initial) " coming before a space (fortunately fixed in PS Core). 
-    # !! Due to `ie`'s escaping that turns into `3\" of snow`
-    # !! in the behind-the-scenes command line, which ends up passing *3* arguments - there is no way to workarond that.
-    # !! To make the test succeed, we use '3 " of snow' (space before ") in WinPS, in which case the engine does
-    # !! double-quote the argument as a whole.
-    $exeArgs = '', 'a&b', ('3 " of snow', '3" of snow')[$IsCoreCLR], 'Nat "King" Cole', 'c:\temp 1\', 'a \" b', 'a"b'
+    It 'Handles batch-file quoting needs with space-less arguments' {
+  
+      # cmd.exe metachars. (in addition to ") that must trigger "..." enclosure:
+      #   & | < > ^ , ;
+      $exeArgs =
+      'a"b', 'a&b', 'a|b', 'a<b', 'a>b', 'a^b', 'a,b', 'a;b', 'last'
 
-    $result = dbea -Raw -UseIe -- $exeArgs
-
-    Compare-Object $exeArgs $result | ForEach-Object { '{0} <{1}>' -f $_.SideIndicator, $_.InputObject } | Should -BeNull
-  }
-
-  It 'Properly passes scripts with complex quoting to various interpreters (if installed)' {
-    $ohtCmds = [ordered] @{
-      # CLIs that require \" and are escaped that way in both editions.
-      ruby       = { ie ruby -e 'puts "hi there"' }
-      perl       = { ie perl -E 'say "hi there"' }
-      pwsh       = { ie pwsh -noprofile -c '"hi there"' }
-      powershell = { ie powershell -noprofile -c '"hi there"' }
-
-      # CLIs that also accept "" and are used with that escaping in *WinPS*
-      node       = { ie node -pe '"hi there"' }
-      python     = { ie python -c 'print("hi there")' }
+      # Note: Batch file always echo arguments exactly as quoted.
+      $expected =
+      '"a""b"', '"a&b"', '"a|b"', '"a<b"', '"a>b"', '"a^b"', '"a,b"', '"a;b"', 'last' 
+  
+      -split (dbea -UseIe -UseBatchFile -Raw -- $exeArgs) | Should -BeExactly $expected
+  
     }
 
-    foreach ($exe in $ohtCmds.Keys) {
-      if (Get-Command -ea Ignore -Type Application $exe) {
-        "Testing with $exe...." | Write-Verbose -vb
-        & $ohtCmds[$exe] | Should -BeExactly 'hi there'
-      }
-    } 
+    It 'Handles partial-quoting needs of CLIs such as msiexec.exe' {
+  
+      # Arguments of the following form must be placed with *partial double-quoting*,
+      # *around the value only* on the command line (e.g., `foo="bar none"`):
+      'foo=bar none', '/foo:bar none', '-foo:bar none', 'foo=bar"none' | ForEach-Object {
+  
+        $exeArgs = $_, 'a " b'
+        # Not only must the value part be selectively quoted, ""-escaping must also be triggered (it's what msiexec requires).
+        # (In WinPS we use ""-escaping by default anyway, but not in PS Core).
+        $partiallyQuotedArg = (($_ -replace '"', '""') -replace '(?<=[:=]).+$', '"$&"')
+        if ($PSVersionTable.PSVersion.Major -le 4) {
+          # !! CAVEAT: In WinPS v3 and v4 only, the partial quoting causes the engine to still enclose the entire argument in "..."
+          # !! if the value contains spaces, which we cannot help.
+          # ?? TBD: Do msiexec / msdeploy and cmdkey still interpret such arguments correctly?
+          if ($partiallyQuotedArg.Contains(' ')) { $partiallyQuotedArg = '"{0}"' -f $partiallyQuotedArg }
+        }
+        $expectedRawCmdLine = '{0} {1}' -f $partiallyQuotedArg, '"a "" b"'
+
+        # Run dbea and extract the raw command line from the output (last non-blank line.)
+        $rawCmdLine = ((dbea -UseIe -- $exeArgs) -notmatch '^\s*$')[-1].Trim()
+
+        $rawCmdLine | Should -BeExactly $expectedRawCmdLine
+  
+      }  
+  
+    }  
 
   }
 

@@ -143,7 +143,10 @@ About to PUBLISH TO THE POWERSHELL GALLERY:
     * you've run ``Push-Location (Split-Path (Get-Module -ListAvailable $($props.moduleName)).Path); if (`$?) { Invoke-Pester }``
       and verified that the TESTS PASS:
        * on ALL PLATFORMS and
-       * on WINDOWS, both in PowerShell Core and Windows PowerShell, as well as in v3 and v4
+       * on WINDOWS, both in PowerShell Core and Windows PowerShell
+         * as well as in v3 and v4: in these VMs, run the following before testing:
+         rmo -ea ignore Native; pushd c:/; ri -ea ignore -recurse -force `$HOME\Documents\WindowsPowerShell\Modules\Native; cpi \\mkw10\c$\MkUtil\Users\mklement\Settings\PowerShell\Modules\Native `$HOME\Documents\WindowsPowerShell\Modules\ -recurse -force; ipmo native -vb; pushd `$HOME\Documents\WindowsPowerShell\Modules\Native; ipr
+ 
 
 Proceed?
 "@
