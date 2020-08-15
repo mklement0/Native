@@ -57,8 +57,13 @@ shell to execute; e.g.:
 
   ins 'whoami && echo hi'
 
-Add -ErrorOnFailure (-e) if you want a script-terminating error to be thrown
-in case the native shell reports a nonzero exit code.
+The native shell's exit code will be reflected in $LASTEXITCODE; use only 
+$LASTEXITCODE to infer success vs. failure, not $?, which always ends up 
+$true for technical reasons.
+Unfortunately, this means that you cannot meaningfully combine this command
+with && and ||, the pipeline-chain operators.
+However, if you want to automatically abort a script (throw a script-terminating
+error) in case of a nonzero exit code, you can use -e (-ErrorOnFailure).
 
 For command lines with tricky quoting, use here-strings; e.g., on Unix:
 
@@ -67,15 +72,11 @@ For command lines with tricky quoting, use here-strings; e.g., on Unix:
   '@
 
 Use an interpolating (here-)string to incorporate PowerShell values; use `$
-for $ characters to pass throug to the native shell; e.g., on Unix:
+for $ characters to pass through to the native shell; e.g., on Unix:
 
   ins @"
     printf 'PS version: %s\n' "$($PSVersionTable.PSVersion)"
   "@
-
-The native shell's exit code will be reflected in $LASTEXITCODE; use only 
-$LASTEXITCODE to infer success vs. failure, not $?, which always ends up 
-$true.
 
 Pipeline input is supported in two fundamental modes:
 
@@ -108,11 +109,11 @@ use the -ArgumentList (-Args) parameter explicitly, in which case you must
 specify the arguments as an *array*.
 
 IMPORTANT:
-  * On Windows, the command line isn't executed directly by cmd.exe, 
-    but via a temporary *batch file*. This means that batch-file syntax rather
-    than command-prompt syntax will be in effect, notably needing %% rather 
-    than just % before `for` loop variables (e.g. %%i) and being able to escape
-    verbatim "%" characters as "%%"
+  On Windows, the command line isn't executed directly by cmd.exe, 
+  but via a temporary *batch file*. This means that batch-file syntax rather
+  than command-prompt syntax is in effect, which notably means that you need %% 
+  rather  than just % before `for` loop variables (e.g. %%i) and that you may
+  escape verbatim % characters as %%
 
 .PARAMETER ArgumentList
 Any addtional arguments to pass through to the ad-hoc script passed to
@@ -123,8 +124,8 @@ Important:
 * These arguments bind to the standard batch-file / shell-script 
   parameters starting with %1 / $1. See the NOTES section for more information.
 
-* If you pass the pass-through arguments *individually, positionally*, 
-  you may precede them with an extra '--' argument to avoid name conflicts with
+* If you pass the pass-through arguments individually, positionally, 
+  precede them with an extra '--' argument to avoid name conflicts with
   this function's own parameters (which includes the supported common
   parameters).
 
@@ -149,6 +150,11 @@ to work in any of the major POSIX-compatible shells: bash, dash, ksh, and zsh.
 Triggers a script-terminating error if the native shell indicates overall
 failure of the command line's execution via a nonzero exit code; aliased to
 -e.
+
+The error record generated shows an *approximation* of the original command
+line in its TargetObject property; that is, it shows a concatenation of the
+verbatim expanded arguments without consistently reflecting necessary quoting 
+or escaping.
 
 IMPORTANT: This switch acts independently of PowerShell's error handling, 
 which as of v7.1 does not act on nonzero exit codes reported by external
@@ -252,6 +258,11 @@ complex quoting to Bash.
   'HKEY_LOCAL_MACHINE:\SOFTWARE\Microsoft\Windows NT\CurrentVersion'; the 
   following options, which explicitly request cmd.exe's default behavior, are 
   used to ensure a predictable execution environment: /d /e:on /v:off
+
+* That $? ends up $true even if the native shell reported a nonzero exit code 
+  (reflected in $LASTEXITCODE) cannot be avoided as of v7.1; however there are 
+  plans to eventually make $? settable from user code; see
+  https://github.com/PowerShell/PowerShell/issues/10917#issuecomment-550550490
 
 #>
 
@@ -424,6 +435,14 @@ complex quoting to Bash.
     }
 
   }
+
+  # Witout -e, $? *always* ends up as $true for the caller, irrespective of
+  # the $LASTEXITCODE value, unfortunately, which cannot be helpd as of v7.1. 
+  # This means you cannot use this function meaningfully with && and ||.
+  # There is no workaround as of PowerShell Core 7.1.0-preview.5, but there
+  # are plans to make $? settable by user code: see
+  # https://github.com/PowerShell/PowerShell/issues/10917#issuecomment-550550490
+
 }
 
 
@@ -450,8 +469,9 @@ Note:
 Do not use $?, which always ends up as $true.
 Unfortunately, this means that you cannot meaningfully use this function with
 && and ||, the pipeline-chain operators.
-However, if you want to automatically abort the script (throw a script-terminating 
-error) if failure is signaled, you can call the related 'iee' wrapper function.
+However, if you want to automatically abort a script (throw a 
+script-terminating error) if failure is signaled, you can call the related 
+'iee' wrapper function.
 
 * Use of --%, the stop-parsing symbol, with this function is NOT supported, 
 but it is never necessary on Unix platforms, and should generally not be 
@@ -860,8 +880,9 @@ PowerShell Core isn't affected to begin with, so \" is used by default there.
     & $exe @escapedArgs
   }
 
-  # $? always ends up as $true, unfortunately, which means you cannot use `ie`
-  # meaningfully with && and ||.
+  # $? *always* ends up as $true for the caller, irrespective of
+  # the $LASTEXITCODE value, unfortunately, which cannot be helpd as of v7.1. 
+  # This means you cannot use this function meaningfully with && and ||.
   # There is no workaround as of PowerShell Core 7.1.0-preview.5, but there
   # are plans to make $? settable by user code: see
   # https://github.com/PowerShell/PowerShell/issues/10917#issuecomment-550550490
@@ -938,7 +959,7 @@ function Debug-ExecutableArguments {
 Debugs external-executable argument passing. Aliased to: dbea
 
 .DESCRIPTION
-Acts as an external executable that prints the arguments passed to it in 
+Acts like an external executable that prints the arguments passed to it in 
 diagnostic form, similar to what the well-known third-party echoArgs.exe 
 utility does on Windows.
 
@@ -952,7 +973,7 @@ single command line that encodes all arguments, but an array of verbatim
 strings.
 
 The default output is formatted for easy readability by humans.
-Using -Raw prints the raw argument values only.
+Using -Raw prints the argument values received as-is, undecorated.
 
 This function is useful for diagnosing the problems with passing empty-string
 arguments and arguments with embedded double quotes to external executables
@@ -968,9 +989,9 @@ Hidden helper executables / scripts, created on demand, are used to receive and
 print the given arguments. By default, a helper binary is used on Windows, 
 and an ad-hoc /bin/sh script on Unix.
 
-On Windows, you can specify -UseBatchFile to use a batch file instead, or
--UseWrapperBatchFile to use an intermediate batch file to pass the arguments
-through to the helper binary.
+On Windows, you can alternatively use -UseBatchFile to pass the arguments to
+an argument-printing batch file instead, or -UseWrapperBatchFile to use an 
+intermediate batch file to pass the arguments through to the helper binary.
 
 .PARAMETER ArgumentList
 The arguments to pass - either with -ArgumentList / -Args as an *array*,
@@ -978,7 +999,7 @@ or more conveniently, as *individual*, positional arguments.
 
 That is, the following two invocations are equivalent:
 
-  Debug-ExecutableArguments one, two, three
+  Debug-ExecutableArguments -Args one, two, three
 
 and:
 
@@ -1004,7 +1025,7 @@ entry point ultimately receive arguments. The Azure CLI is a prominent
 example.
 
 .PARAMETER Raw
-Prints the arguments only, as-is, eacho on its own line. 
+Prints the arguments only, as-is, each on its own line. 
 No delimiters are used and no other information is printed.
 
 This makes the output suitable for programmatic processing, but only as long
@@ -1221,8 +1242,8 @@ if [ -z "$_dbea_raw" ]; then
 fi
 '@
     if ($UseIe) {
-      # !! The use of ie necessitates an extra '--', so that the other '--'
-      # !! doesn't get "eaten" by PowerShell's parameter binding.
+      # !! The use of `ie` necessitates an extra '--', because the first '--'
+      # !! is invariably "eaten" by PowerShell's parameter binding.
       $script | ie /bin/sh -s -- -- @ArgumentList
     } 
     else {

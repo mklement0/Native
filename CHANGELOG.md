@@ -4,6 +4,9 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.0.7** (2020-08-15):
+  * [doc] Clarification added that for technical reasons `ins` / `Invoke-NativeShell` cannot be meaningfully combined with the `&&` and `||` operators.
+
 * **v1.0.6** (2020-08-15):
   * [doc] Clarification added that for technical reasons `ie` cannot be meaningfully combined with the `&&` and `||` operators.
 
