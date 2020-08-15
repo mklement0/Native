@@ -448,8 +448,10 @@ Note:
 
 * To check if the executable signaled failure, see if $LASTEXITCODE is nonzero.
 Do not use $?, which always ends up as $true.
-If you want to automatically abort the script (throw a script-terminating 
-error) if failure is signaled, call the related 'iee' wrapper function.
+Unfortunately, this means that you cannot meaningfully use this function with
+&& and ||, the pipeline-chain operators.
+However, if you want to automatically abort the script (throw a script-terminating 
+error) if failure is signaled, you can call the related 'iee' wrapper function.
 
 * Use of --%, the stop-parsing symbol, with this function is NOT supported, 
 but it is never necessary on Unix platforms, and should generally not be 
@@ -506,64 +508,67 @@ dbea -ie -- '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'  'a"b'
 Background information on PowerShell's broken argument handling:
 https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
 
-* External executable in this context means any executable that PowerShell must
-  invoke via a child process, which encompasses not just binary executables,
-  but also batch files and other shells' or scripting languages' scripts.
+That $? ends up $true even if the executable reported a nonzero exit code 
+(reflected in $LASTEXITCODE) cannot be avoided as of v7.1; however there are 
+plans to eventually make $? settable from user code; see
+https://github.com/PowerShell/PowerShell/issues/10917#issuecomment-550550490
 
-* The only reason for this function's existence is that up to at least
-  PowerShell 7.0, arguments passed to external programs are not passed
-  correctly if they are either the empty string or have embedded double quotes.
-  Should the underlying problem ever be fixed in PowerShell itself, this
-  function will no longer apply its workarounds and will effectively act like 
-  '&', the call operator. See the NOTES section for a link to more information.
+External executable in this context means any executable that PowerShell must
+invoke via a child process, which encompasses not just binary executables,
+but also batch files and other shells' or scripting languages' scripts.
 
-* This function is intentially designed to be a minimalist stopgap that
-  should be unobtrusive and simple to use. It is therefore implemented as 
-  a *simple* function and does *not* support common parameters (just like
-  you can't use common parameters with direct invocation).
+The only reason for this function's existence is that up to at least
+PowerShell 7.0, arguments passed to external programs are not passed
+correctly if they are either the empty string or have embedded double quotes.
+Should the underlying problem ever be fixed in PowerShell itself, this
+function will no longer apply its workarounds and will effectively act like 
+'&', the call operator. See the NOTES section for a link to more information.
+
+This function is intentially designed to be a minimalist stopgap that
+should be unobtrusive and simple to use. It is therefore implemented as 
+a *simple* function and does *not* support common parameters (just like
+you can't use common parameters with direct invocation).
+
+The specifics of accommodating batch-file calls are as follows:
+
+* Embedded double quotes, if any, are escaped as "" in all arguments.
+* Any argument that contains *no spaces* but contains either double quotes
+  or cmd.exe metacharacters such as "&" is enclosed in double quotes
+  (whereas PowerShell by default only encloses arguments *with spaces* in
+  double quotes); e.g., a verbatim argumen seen by PowerShell as `a&b` is
+  placed as `"a&b"` on the command line passed to a batch file.
 
 The specifics of accommodating high-profile CLIs such as msiexec.exe /
 msdeploy.exe and cmdkey.exe are as follows:
 
-On Windows, in PowerShell version 5.1 and in PowerShell Core (v6+), any 
-invocation that contains at least one argument of the following forms triggers
-the following behavior; `<word>` can be composed of letters,
-digits, and underscores:
-* <word>=<value>
-* /<word>:<value>
-* -<word>:<value>
+On Windows, any invocation that contains at least one argument of the following
+forms triggers the behavior described bewlo; `<word>` can be composed of 
+letters, digits, and underscores:
+  * <word>=<value>
+  * /<word>:<value>
+  * -<word>:<value>
 
 If such an argument is present:
 
 * Embedded double quotes, if any, are escaped as "" in all arguments.
-* If the <value> part has spaces or embeddded double quotes, only *it* is
+* In PowerShell v5.1 and above, if the <value> part has spaces, only *it* is 
   enclosed in double quotes, *not* the argument *as a whole* (which is what
   PowerShell - justifiably - does by default); e.g., a verbatim argument
   seen by PowerShell as `foo=bar none` is placed as `foo="bar none"` on the
   process' command line (rather than as `"foo=bar none"`).
   The aforementioned high-profile CLIs require this very specific form of
   quoting, unfortunately.
-
-Unfortunately, this accommodation doesn't work in PowerShell v3 and v4, so
-you'll have to use --% or Invoke-NativeShell there.
-
-The specifics of accommodating batch-file calls are as follows:
-
-* Embedded double quotes, if any, are escaped as "" in all arguments.
-* Any argument that contains *no spaces* but contains either double quotes
-  or one of the following cmd.exe metacharacters is enclosed in double quotes
-  (whereas PowerShell by default only encloses arguments *with spaces* in
-  double quotes); e.g., a verbatim argumen seen by PowerShell as `a&b` is
-  placed as `"a&b"` on the command line passed to a batch file.
+  Unfortunately, this accommodation doesn't work in PowerShell v3 and v4, so
+  you'll have to use --% or Invoke-NativeShell there.
 
 There is one - presumably quite rare - edge case that cannot be handled
-correctly in Windows PowerShell:
+correctly in any of thes supported Windows PowerShell versions:
 
-* If the target executable requires escaping embedded " as \" and
+* If the target executable requires escaping embedded " as \" and ...
 * ... an argument has a non-initial embedded " not preceded by a space char;
-      e.g., `3" of snow`; in that event, Windows PowerShell neglects to
-      enclose the whole argument in double quotes, so that *3* arguments end
-      up getting passed.
+  e.g., `3" of snow`; in that event, Windows PowerShell neglects to
+  enclose the whole argument in double quotes, so that *3* arguments end
+  up getting passed.
 
 Only the following target executables trigger \" escaping by this function: 
 ruby, perl, pwsh, powershell.
@@ -854,6 +859,12 @@ PowerShell Core isn't affected to begin with, so \" is used by default there.
   else {
     & $exe @escapedArgs
   }
+
+  # $? always ends up as $true, unfortunately, which means you cannot use `ie`
+  # meaningfully with && and ||.
+  # There is no workaround as of PowerShell Core 7.1.0-preview.5, but there
+  # are plans to make $? settable by user code: see
+  # https://github.com/PowerShell/PowerShell/issues/10917#issuecomment-550550490
 
 }
 
