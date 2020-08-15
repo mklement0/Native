@@ -1,10 +1,10 @@
-﻿@{
+@{
 
 # Script module or binary module file associated with this manifest.
 RootModule = 'Native.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.4'
+ModuleVersion = '1.0.5'
 
 # Supported PSEditions: BOTH.
 # However, we can't use the `CompatiblePSEditions`entry, because it is 

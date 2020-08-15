@@ -434,61 +434,43 @@ Invokes an external executable with robust argument passing.
 
 .DESCRIPTION
 Invokes an external executable with arguments passed through properly, even if
-they contain embedded double quotes or they're the empty string.
-
-'ie' stands for 'Invoke (External) Executable'. The related 'iee' wrapper
-function additionally throws an error if the external executable indicated
-failure via a nonzero process exit code.
-
-Note: Since the invocation solely relies on PowerShell's own argument-mode
-      syntax and since no other shell is involved (as in a direct call),
-      this function is suitable for use in *cross-platform*  code, unlike calls
-      to Invoke-NativeShell / ins.
+they contain embedded double quotes or they're the empty string, to compensate
+for PowerShell's broken argument passing up to at least v7.1
+'ie' stands for 'Invoke (External) Executable'
 
 Use this function by simply prefixing a call to an external executable with
 'ie' as the command (if invocation via call operator '&' would
 normally be necessary, use 'ie' *instead* of it). E.g., on Unix:
 
   ie printf '"%s" ' print these arguments quoted
+  
+Note:
 
-IMPORTANT: 
+* To check if the executable signaled failure, see if $LASTEXITCODE is nonzero.
+Do not use $?, which always ends up as $true.
+If you want to automatically abort the script (throw a script-terminating 
+error) if failure is signaled, call the related 'iee' wrapper function.
 
-* On Windows, this function also handles special quoting needs for batch files
-  and high-profile CLIs such as msiexec.exe, msdeploy.exe, and cmdkey.exe.
-  So there should generally be no need for --%, the stop-parsing symbol, 
-  which this function does *not* support.
-  In other words: use EITHER this function OR, if you truly need --%, use it
-  with direct invocation only.
+* Use of --%, the stop-parsing symbol, with this function is NOT supported, 
+but it is never necessary on Unix platforms, and should generally not be 
+necessary on Windows, because this function automatically handles special
+quoting needs of batch files and, in PowerShell v5.1 and above, of
+high-profile CLIs such as msiexec.exe, msdeploy.exe, and cmdkey.exe - see the
+NOTES section. In the rare event that you do need --%, use it with direct 
+invocation, as usual, or invoke via ins (Invoke-NativeShell).
 
-* -- as an argument is invariably removed by PowerShell on invocation. If
-  you need to pass -- through to the executable, pass it *twice*.
+* -- as an argument is invariably removed by PowerShell on invocation, for
+  technical reasons. If you need to pass -- through to the executable, pass
+  it *twice*.
 
-* External executable in this context means any executable that PowerShell must
-  invoke via a child process, which encompasses not just binary executables,
-  but also batch files and other shells' or scripting languages' scripts.
+Since the invocation solely relies on PowerShell's own argument-mode
+syntax and since, as in direct invocation, no other shell is involved,
+this function is suitable for use in *cross-platform*  code, unlike the
+platform-specific calls to Invoke-NativeShell / ins.
 
-* The only reason for this function's existence is that up to at least
-  PowerShell 7.0, arguments passed to external programs are not passed
-  correctly if they are either the empty string or have embedded double quotes.
-  Should the underlying problem ever be fixed in PowerShell itself, this
-  function will no longer apply its workarounds and will effectively act like 
-  '&', the call operator. See the NOTES section for a link to more information.
-
-* This function is intentially designed to be a minimalist stopgap that
-  should be unobtrusive and simple to use. It is therefore implemented as 
-  a *simple* function and does *not* support common parameters (just like
-  you can't use common parameters with direct invocation).
-
-CAVEATS:
-
-  * While $LASTEXITCODE is set as usual, $? always ends up as $true.
-    Only query $LASTEXITCODE to infer success vs. failure.
-
-  * This function should work robustly in PowerShell Core, but in
-    Windows PowerShell there are still edge cases with embedded double quotes
-    that break if `\"` escaping (rather than `""`) must be used behind the
-    scenes; whether `\"` must be used is inferred from the specific target
-    executable being invoked.
+This function is intentionally implemented as a *simple* function, and
+therefore doesn't support any common parameters (just like direct invocation
+doesn't).
 
 .EXAMPLE
 ie echoArgs.exe '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'  'a"b'
@@ -524,11 +506,28 @@ dbea -ie -- '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'  'a"b'
 Background information on PowerShell's broken argument handling:
 https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
 
+* External executable in this context means any executable that PowerShell must
+  invoke via a child process, which encompasses not just binary executables,
+  but also batch files and other shells' or scripting languages' scripts.
+
+* The only reason for this function's existence is that up to at least
+  PowerShell 7.0, arguments passed to external programs are not passed
+  correctly if they are either the empty string or have embedded double quotes.
+  Should the underlying problem ever be fixed in PowerShell itself, this
+  function will no longer apply its workarounds and will effectively act like 
+  '&', the call operator. See the NOTES section for a link to more information.
+
+* This function is intentially designed to be a minimalist stopgap that
+  should be unobtrusive and simple to use. It is therefore implemented as 
+  a *simple* function and does *not* support common parameters (just like
+  you can't use common parameters with direct invocation).
+
 The specifics of accommodating high-profile CLIs such as msiexec.exe /
 msdeploy.exe and cmdkey.exe are as follows:
 
-On Windows, any invocation that contains at least one argument of the following
-forms triggers the following behavior; `<word>` can be composed of letters,
+On Windows, in PowerShell version 5.1 and in PowerShell Core (v6+), any 
+invocation that contains at least one argument of the following forms triggers
+the following behavior; `<word>` can be composed of letters,
 digits, and underscores:
 * <word>=<value>
 * /<word>:<value>
@@ -544,6 +543,9 @@ If such an argument is present:
   process' command line (rather than as `"foo=bar none"`).
   The aforementioned high-profile CLIs require this very specific form of
   quoting, unfortunately.
+
+Unfortunately, this accommodation doesn't work in PowerShell v3 and v4, so
+you'll have to use --% or Invoke-NativeShell there.
 
 The specifics of accommodating batch-file calls are as follows:
 
@@ -756,9 +758,14 @@ PowerShell Core isn't affected to begin with, so \" is used by default there.
 
         # Write-Debug "may require partial d-quoting: $arg`n$($Matches | Out-String)"
 
-        if ($hasSpaces -or $mustDQuoteSpacelessArg) {
+        if ($mustDQuoteSpacelessArg -or ($hasSpaces -and $PSVersionTable.PSVersion.Major -ge 5) ) {
+          # !! CAVEAT: In WinPS v3 and v4 only, *a partially quoted value that contains spaces*, such as `foo="bar none"`,
+          # !! causes the engine to still enclose the entire argument in "...", which cannot be helped.
+          # !! Only a space-less value that needs quoting ($mustDQuoteSpacelessArg) is handled correctly (which may never occur in practice).
+          # !! Calls to msiexec / msdeploy and cmdkey with values with spaces will therefore break and require --% in v3 and v4 - 
+          # !! we could blindly still try the partial quoting, as the call will break either way, but it's better to highlight PowerShell's built-in behavior.
+
           # We reconstruct the expected partial quoing with *embedded* quoting, which both WinPS And PS Core pass through as-is.
-          # !! CAVEAT: In WinPS v3 and v4 only, this causes the engine to still enclose the entire argument in "..." if the value contains spaces, which we cannot help.
           $arg = '{0}{1}"{2}"' -f $Matches['key'], $Matches['sep'], $Matches['value']
         }
 

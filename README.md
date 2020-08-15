@@ -41,8 +41,10 @@ The module comes with the following commands:
   * Note:
     * Unlike `ins`, `ie` expects you to use _PowerShell's_ syntax and pass the arguments _individually_, as you normally would in direct invocation; in other words: simply place `ie` as the command name before how you would normally invoke the external executable (if the normal invocation would synctactically require `&`, use `ie` _instead_ of `&`.)
     * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.0, [as summarized in this GitHub issue](https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
-    * For technical reasons, passing `--` is invariably removed by PowerShell; to pass `--` through to the target executable, specify it _twice_.
-    * `ie` automatically handles special quoting needs for batch files and for executables such as `msiexec.exe` and `msdeploy.exe`; run `ie -?` for details.
+    * For technical reasons:
+      * passing `--` is invariably removed by PowerShell; to pass `--` through to the target executable, specify it _twice_.
+      * check only `$LASTEXITCODE` for being nonzero to determine if the executable signaled failure; do not use `$?`, which always ends up `$true`.
+    * `ie` should be fully robust on Unix-like platforms, but on Windows the fundamental nature of argument passing to a process via a single string that encodes all arguments prevents a fully robust solution. However, `ie` tries hard to make the vast majority of calls work, by automatically handling special quoting needs for batch files and, in Powershell versions 5.1 and above, for executables such as `msiexec.exe` / `msdeploy.exe` and `cmdkey.exe` (run `Get-Help ie -Full` for details); by default it adheres to the [Microsoft C/C++ quoting conventions for process command lines](https://docs.microsoft.com/en-us/cpp/cpp/main-function-command-line-args?view=vs-2019#parsing-c-command-line-arguments), although in Windows PowerShell `""` rather than `\"` is used for escaping embedded `"` characters, for technical reasons. If `ie` doesn't work in a given call, use `--%`, the [stop-parsing symbol](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Parsing) to control quoting explicitly, or call via `ins` (given that `cmd.exe` ultimately uses the quoting as specified).
 
   * Use the closely related **`iee`** function (the extra "e" standing for "error") if you want a script-terminating error to be thrown if the external executable reports a nonzero exit code (if `$LASTEXITCODE` is nonzero); e.g., the following command would throw an error:
     * `iee git clone http://example.org/no-git-repo-here`
@@ -96,7 +98,7 @@ All commands come with **help**; examples, based on `ins`:
 * `ins -?` shows brief, syntax-focused help.
 * `help ins -Examples` shows examples.
 * `help ins -Parameter UseSh` shows help for parameter `-UseSh`.
-* `help ins -Full` shows comprehensive help that includes individual parameter descriptions.
+* `help ins -Full` shows comprehensive help that includes individual parameter descriptions and notes.
 
 ---
 

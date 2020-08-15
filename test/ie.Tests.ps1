@@ -11,7 +11,7 @@ if (-not (Test-Path Variable:IsCoreCLR)) { $script:IsCoreCLR = $false }
 # loaded module's ModuleInfo's .Path property will reflect the *.psm1 instead.
 $manifest = (Get-Item $PSScriptRoot/../*.psd1)
 Remove-Module -ea Ignore -Force $manifest.BaseName # Note: To be safe, we unload any modules with the same name first (they could be in a different location and end up side by side in memory with this one.)
-Import-Module $manifest
+Import-Module $manifest -Force -Global # -Global makes sure that when psake runs tester in a child scope, the module is still imported globally.
 
 Describe 'ie tests' {
 
@@ -79,18 +79,23 @@ Describe 'ie tests' {
   
       # Arguments of the following form must be placed with *partial double-quoting*,
       # *around the value only* on the command line (e.g., `foo="bar none"`):
-      'foo=bar none', '/foo:bar none', '-foo:bar none', 'foo=bar"none' | ForEach-Object {
+      $argsToPartiallyQuote = if ($PSVersionTable.PSVersion.Major -le 4) {
+          # !! CAVEAT: In WinPS v3 and v4 only, *a partially quoted value that contains spaces*, such as `foo="bar none"`,
+          # !! causes the engine to still enclose the entire argument in "...", which cannot be helped.
+          # !! Only a space-less value that needs quoting is handled correctly (which may never occur in practice).
+          Write-Warning "Partial quoting of msiexec-style arguments with spaces not supported in v3 and v4, skipping test."
+          'foo=bar"none'
+      } else {
+        'foo=bar none', '/foo:bar none', '-foo:bar none', 'foo=bar"none'  
+      }
+      
+      $argsToPartiallyQuote | ForEach-Object {
   
         $exeArgs = $_, 'a " b'
+
         # Not only must the value part be selectively quoted, ""-escaping must also be triggered (it's what msiexec requires).
         # (In WinPS we use ""-escaping by default anyway, but not in PS Core).
         $partiallyQuotedArg = (($_ -replace '"', '""') -replace '(?<=[:=]).+$', '"$&"')
-        if ($PSVersionTable.PSVersion.Major -le 4) {
-          # !! CAVEAT: In WinPS v3 and v4 only, the partial quoting causes the engine to still enclose the entire argument in "..."
-          # !! if the value contains spaces, which we cannot help.
-          # ?? TBD: Do msiexec / msdeploy and cmdkey still interpret such arguments correctly?
-          if ($partiallyQuotedArg.Contains(' ')) { $partiallyQuotedArg = '"{0}"' -f $partiallyQuotedArg }
-        }
         $expectedRawCmdLine = '{0} {1}' -f $partiallyQuotedArg, '"a "" b"'
 
         # Run dbea and extract the raw command line from the output (last non-blank line.)

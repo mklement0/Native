@@ -11,7 +11,7 @@ if (-not (Test-Path Variable:IsCoreCLR)) { $script:IsCoreCLR = $false }
 # loaded module's ModuleInfo's .Path property will reflect the *.psm1 instead.
 $manifest = (Get-Item $PSScriptRoot/../*.psd1)
 Remove-Module -ea Ignore -Force $manifest.BaseName # Note: To be safe, we unload any modules with the same name first (they could be in a different location and end up side by side in memory with this one.)
-Import-Module $manifest
+Import-Module $manifest -Force -Global # -Global makes sure that when psake runs tester in a child scope, the module is still imported globally.
 
 Describe 'dbea (Debug-ExecutableArguments) tests' {
 

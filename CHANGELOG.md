@@ -4,6 +4,10 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.0.5** (2020-08-15):
+  * [enhancement] On Windows, `<word>=<value>`, `/<word>:<value>` / `-<word>:<value>` now result in `""`-escaping of embedded `"` in both editions.
+    If `<value>` has spaces, the argument is passed with double-quoting of the value only (e.g., `<word>="<value>"`), but only in PowerShell versions 5.1 and above (not supported in v3 and v4).
+
 * **v1.0.4** (2020-08-13):
   * [enhancement] `<word>=<value with spaces>` arguments are now always passed as
     `<word>="<value with spaces>"` on Windows; in Windows PowerShell, `""` is now
