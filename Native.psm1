@@ -555,14 +555,14 @@ The specifics of accommodating batch-file calls are as follows:
 * Any argument that contains *no spaces* but contains either double quotes
   or cmd.exe metacharacters such as "&" is enclosed in double quotes
   (whereas PowerShell by default only encloses arguments *with spaces* in
-  double quotes); e.g., a verbatim argumen seen by PowerShell as `a&b` is
+  double quotes); e.g., a verbatim argument seen by PowerShell as `a&b` is
   placed as `"a&b"` on the command line passed to a batch file.
 
 The specifics of accommodating high-profile CLIs such as msiexec.exe /
 msdeploy.exe and cmdkey.exe are as follows:
 
 On Windows, any invocation that contains at least one argument of the following
-forms triggers the behavior described bewlo; `<word>` can be composed of 
+forms triggers the behavior described below; `<word>` can be composed of 
 letters, digits, and underscores:
   * <word>=<value>
   * /<word>:<value>
