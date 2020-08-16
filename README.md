@@ -32,7 +32,7 @@ The module comes with the following commands:
 
     * On Windows, a temporary _batch file_ rather than a direct `cmd.exe /c` call is used behind the scenes, (not just) for technical reasons. This means that batch-file syntax must be used, which notably means that loop variables must use `%%`, not just `%`, and that you may escape `%` as `%%` - arguably, this is for the better anyway. The only caveat is that aborting a long-running command with <kbd>Ctrl-C</kbd> will present the infamous `Terminate batch file (y/n)?` prompt; simple repeat <kbd>Ctrl-C</kbd> to complete the termination.
 
-    * `--` can be used to dismabiguate pass-through arguments from `ins` own parameters; if you need to pass `--` as a pass-through argument, first precede all pass-through arguments with `--`, and then use 
+    * `--` can be used to dismabiguate pass-through arguments from `ins` own parameters; if you need to pass `--` as a pass-through argument, first precede all pass-through arguments with `--` and then use `--` again.
 
     * For technical reasons, you must check only `$LASTEXITCODE` for being nonzero in order to determine if the native shell signaled failure; do not use `$?`, which always ends up `$true`. Unfortunately, this means that you cannot meaningfully use this function with `&&` and `||`, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, use the `-e` (`-ErrorOnFailure`) switch.
 
