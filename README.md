@@ -184,7 +184,7 @@ See also: [this repo's page in the PowerShell Gallery](https://www.powershellgal
 
 ## Manual Installation
 
-Download this repository (as an archive) and extract it into one of the directories listed in the `$env:PSModulePath` variable; e.g., to install the module in the context of the current user, choose the following parent folders:
+Download this repository as a ZIP archive, extract it, and place the _contents_ of the `Native-master` subfolder into a folder named `Native` in one of the directories listed in the `$env:PSModulePath` variable; e.g., to install the module in the context of the current user, choose the following parent folders:
 
 * **Windows**:
   * Windows PowerShell: `$HOME\Documents\WindowsPowerShell\Modules`
@@ -194,21 +194,36 @@ Download this repository (as an archive) and extract it into one of the director
 
 As long as you've cloned into one of the directories listed in the `$env:PSModulePath` variable - copying to some of which requires elevation / `sudo` - and as long your `$PSModuleAutoLoadingPreference` is either has no value (the default) or is set to `All`, calling `ins` or `ie` should import the module on demand.
 
-To explicitly import the module, run `Import-Module <path/to/module-folder>`.
+To explicitly import the module, run `Import-Module Native`.
 
-**Example**: Install as a current-user-only module:
+**Example**: Install as a current-user-only module (the code may be re-run later to install updated versions):
 
 ```powershell
-# Switch to the parent directory of the current user's modules.
-Set-Location $(
-  if ($env:OS -eq 'Windows_NT') { 
-    "$HOME\Documents\{0}\Modules" -f ('WindowsPowerShell', 'PowerShell')[[bool]$IsCoreClr] 
-  } else {
-    "$HOME/.local/share/powershell/Modules"
-  }
-)
-# Extract the archive
-Expand-Archive $HOME/Downloads/master.zip
+& {
+  $ErrorActionPreference = 'Stop'
+
+  # Switch to the base directory of the current user's modules.
+  Set-Location $(
+    if ($env:OS -eq 'Windows_NT') { 
+      "$HOME\Documents\{0}\Modules" -f ('WindowsPowerShell', 'PowerShell')[[bool]$IsCoreClr]
+    } else {
+      "$HOME/.local/share/powershell/Modules"
+    }
+  )
+
+  # Download the ZIP archive.
+  Invoke-WebRequest -OutFile Native.zip https://github.com/mklement0/Native/archive/master.zip
+
+  # Extract the archive, which creates a Native subfolder that itself contains
+  # a Native-master subfolder.
+  Remove-Item -ea Ignore ./Native/* -Recurse -Force
+  Expand-Archive ./Native.zip
+
+  # Move the contents of the Native-master subfolder directly into ./Native
+  # and clean up.
+  Move-Item -Force ./Native/Native-master/* ./Native
+  Remove-Item -Force ./Native/Native-master, Native.zip
+}
 ```
 
 Run `ins -?` to verify that installation succeeded and that the module is loaded on demand:
