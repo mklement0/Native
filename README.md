@@ -212,7 +212,7 @@ To explicitly import the module, run `Import-Module Native`.
   )
 
   # Download the ZIP archive.
-  Invoke-WebRequest -OutFile Native.zip https://github.com/mklement0/Native/archive/master.zip
+  Invoke-WebRequest -Resume -OutFile Native.zip https://github.com/mklement0/Native/archive/master.zip
 
   # Extract the archive, which creates a Native subfolder that itself contains
   # a Native-master subfolder.
