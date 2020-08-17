@@ -156,7 +156,7 @@ Set-PSReadLineKeyHandler 'alt+v' -ScriptBlock {
 
 # Installation
 
-## Installation from the PowerShell Gallery
+## Installation from the PowerShell Gallery (PowerShell 5+)
 
 **Prerequisite**: The `PowerShellGet` module must be installed (verify with `Get-Command Install-Module`).  
 `PowerShellGet` comes with PowerShell version 5 or higher; it is possible to manually install it on versions 3 and 4 - see [the docs](https://docs.microsoft.com/en-us/powershell/scripting/gallery/installing-psget).
@@ -182,7 +182,7 @@ ELEV-PS> Install-Module Native -Scope AllUsers
 
 See also: [this repo's page in the PowerShell Gallery](https://www.powershellgallery.com/packages/Native).
 
-## Manual Installation
+## Manual Installation (PowerShell 3 and 4)
 
 Download this repository as a ZIP archive, extract it, and place the _contents_ of the `Native-master` subfolder into a folder named `Native` in one of the directories listed in the `$env:PSModulePath` variable; e.g., to install the module in the context of the current user, choose the following parent folders:
 
