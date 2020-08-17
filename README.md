@@ -184,7 +184,7 @@ See also: [this repo's page in the PowerShell Gallery](https://www.powershellgal
 
 ## Manual Installation
 
-Clone this repository (as a subfolder) into one of the directories listed in the `$env:PSModulePath` variable; e.g., to install the module in the context of the current user, choose the following parent folders:
+Download this repository (as an archive) and extract it into one of the directories listed in the `$env:PSModulePath` variable; e.g., to install the module in the context of the current user, choose the following parent folders:
 
 * **Windows**:
   * Windows PowerShell: `$HOME\Documents\WindowsPowerShell\Modules`
@@ -198,8 +198,6 @@ To explicitly import the module, run `Import-Module <path/to/module-folder>`.
 
 **Example**: Install as a current-user-only module:
 
-Note: Assumes that [`git`](https://git-scm.com/) is installed.
-
 ```powershell
 # Switch to the parent directory of the current user's modules.
 Set-Location $(
@@ -209,8 +207,8 @@ Set-Location $(
     "$HOME/.local/share/powershell/Modules"
   }
 )
-# Clone this repo into subdir. 'Native'; --depth 1 gets only the latest revision.
-git clone --depth 1 --quiet https://github.com/mklement0/Native
+# Extract the archive
+Expand-Archive $HOME/Downloads/master.zip
 ```
 
 Run `ins -?` to verify that installation succeeded and that the module is loaded on demand:
