@@ -18,10 +18,14 @@ Describe 'ie tests' {
   Context "PlatformNeutral" {
 
     It 'Only permits calls to external executables' {
+
       { ie whoami } | Should -Not -Throw
-      { ie Get-Date } | Should -Throw -ErrorId InvalidCommandType
-      { ie select } | Should -Throw -ErrorId InvalidCommandType
-      { ie help } | Should -Throw -ErrorId InvalidCommandType
+      
+      # No other command forms should be accepted: no aliases, functions, cmdlets.
+      { ie select } | Should -Throw -ErrorId ApplicationNotFoundException
+      { ie help } | Should -Throw -ErrorId ApplicationNotFoundException
+      { ie Get-Date } | Should -Throw -ErrorId ApplicationNotFoundException
+
     }
   
     It 'Properly passes arguments to external executables' {

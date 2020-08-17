@@ -4,7 +4,7 @@
 RootModule = 'Native.psm1'
 
 # Version number of this module.
-ModuleVersion = '1.0.7'
+ModuleVersion = '1.0.8'
 
 # Supported PSEditions: BOTH.
 # However, we can't use the `CompatiblePSEditions`entry, because it is 

@@ -4,6 +4,9 @@ Versioning complies with [semantic versioning (semver)](http://semver.org/).
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.0.8** (2020-08-17):
+  * [enhancement] The executable name given is now only looked for as such (command type `Application`), even if other command forms with the same name are present; fixes #3
+
 * **v1.0.7** (2020-08-15):
   * [doc] Clarification added that for technical reasons `ins` / `Invoke-NativeShell` cannot be meaningfully combined with the `&&` and `||` operators.
 

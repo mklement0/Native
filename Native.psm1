@@ -621,28 +621,28 @@ PowerShell Core isn't affected to begin with, so \" is used by default there.
     )
   }
 
-  # Resolve to the underlying command (if it's an alias) and ensure that an external executable was specified.
-  $app = try { Get-Command -ErrorAction Stop $exe } catch { throw }
-  if ($app -and $app.ResolvedCommand) { $app = $app.ResolvedCommand }
-  if ($app.CommandType -ne 'Application') {
-    $exeDescr = '"{0}"' -f $exe
-    if ($exe -ne "$app") { $exeDescr += ' ("{0}")' -f "$app" }
-    # Throw "This command supports external executables only; $exeDescr isn't one." 
+  # Resolve the targeted executable to its full path.
+  # Note: 
+  #  * Even if we wanted to support calls to PowerShell-native commands too, 
+  #    we cannot, given that this simple function is based on the array of positional arguments, $args. 
+  #    While @args has built-in magic for passing even *named* arguments through,
+  #    we need to split $args into executable name and remaining arguments here, and the magic doesn't work with custom arrays.
+  # Note: We explicitly look for external executables only, bypassing other 
+  #       command forms that would normally have higher precedence, namely
+  #       namely aliases, functions and cmdlets.
+  #       !! Using -CommandType implies -All, so we must limit the results to the *first* command found.
+  $app = Get-Command -ErrorAction Ignore -CommandType Application $exe | Select-Object -First 1
+  if (-not $app) {
+    # No command $exe that is (an alias of) an external executable (.CommandType 'Application') found.
     Throw (
       (New-Object System.Management.Automation.ErrorRecord (
-          [ArgumentException] "This command supports external executables (applications) only; $exeDescr is a command of type $($app.CommandType)",
-          'InvalidCommandType',
+          [ArgumentException] "No external executable '$exe' found.",
+          'ApplicationNotFoundException',
           'InvalidArgument',
           $exe
         ))
     ) 
-    # Note: 
-    #  * Even if we wanted to support calls to PowerShell-native commands too, 
-    #    we cannot, given that this simple function is based on the array of positional arguments, $args. 
-    #    While @args has built-in magic for passing even *named* arguments through,
-    #    we need to split $args into executable name and remaining arguments here, and the magic doesn't work with custom arrays.
-  }
-  
+  }  
   # Use the full path for invocation, to avoid having to re-resolve the executable as specified to the underlying full path.
   #  Note: Regrettably, Get-Command also reports *documents* as commands of type 'Application' - see https://github.com/PowerShell/PowerShell/issues/12625
   #        While we could do our own subsequent analysis to see if a true executable was specified, that doesn't seem worth the trouble.

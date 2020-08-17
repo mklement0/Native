@@ -202,6 +202,9 @@ To explicitly import the module, run `Import-Module Native`.
 & {
   $ErrorActionPreference = 'Stop'
 
+  # Enable TLS v1.2, so that Invoke-WebRequest can download from GitHub.
+  [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+
   # Switch to the base directory of the current user's modules.
   Set-Location $(
     if ($env:OS -eq 'Windows_NT') { 
@@ -217,7 +220,8 @@ To explicitly import the module, run `Import-Module Native`.
   # Extract the archive, which creates a Native subfolder that itself contains
   # a Native-master subfolder.
   Remove-Item -ea Ignore ./Native/* -Recurse -Force
-  Expand-Archive ./Native.zip
+  Add-Type -Assembly System.IO.Compression.FileSystem
+  [System.IO.Compression.ZipFile]::ExtractToDirectory("$PWD/Native.zip", "$PWD/Native")
 
   # Move the contents of the Native-master subfolder directly into ./Native
   # and clean up.
