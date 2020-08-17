@@ -23,7 +23,7 @@ Describe 'ie tests' {
       
       # No other command forms should be accepted: no aliases, functions, cmdlets.
       { ie select } | Should -Throw -ErrorId ApplicationNotFoundException
-      { ie help } | Should -Throw -ErrorId ApplicationNotFoundException
+      { ie cd.. } | Should -Throw -ErrorId ApplicationNotFoundException
       { ie Get-Date } | Should -Throw -ErrorId ApplicationNotFoundException
 
     }
