@@ -28,9 +28,10 @@ All commands come with command-line help; examples, based on `ins`:
 
 ### Known Limitations
 
-* With `ins` (`Invoke-NativeShell` and `ie`, for technical reasons, you must **check only `$LASTEXITCODE`** for being nonzero in order to determine if the native shell signaled failure; do not use `$?`, whose value always ends up `$true`. Unfortunately, this means that you cannot meaningfully use these commands with `&&` and `||`, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, use the `-e` (`-ErrorOnFailure`) switch with `ins` or use the `iee` wrapper function for `ie`.
+* With `ins` (`Invoke-NativeShell`) and `ie`, for technical reasons, you must **check only `$LASTEXITCODE`** for being nonzero in order to determine if the native shell signaled failure; do not use `$?`, whose value always ends up `$true`. Unfortunately, this means that you cannot meaningfully use these commands with `&&` and `||`, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, use the `-e` (`-ErrorOnFailure`) switch with `ins` or use the `iee` wrapper function for `ie`.
+Once the ability for user code to _set_ `$?` [gets implemented](https://github.com/PowerShell/PowerShell/issues/10917#issuecomment-550550490), this problem could be fixed.
 
-* Passing `--` to any _PowerShell_ command (which this module's commands invariably are) signals to PowerShell's parameter binder that all subsequent arguments are to be treated as positional ones.
+* **Passing `--`** to any _PowerShell_ command (which this module's commands invariably are) signals to PowerShell's parameter binder that all subsequent arguments are to be treated as positional ones.
   * Given that this (first) `--` is invariably _removed_ in the process, you need to pass it _again_ if the intent is to pass `--` _as an actual argument_ to the native shell / external executable.
   * While the behavior of the first `--` is helpful in the case of `ins` and `dbea`, because you can use it to disambiguate pass-through arguments from these commands' _own_ parameters, it may be unexpected in the case of `ie`, _all_ of whose arguments
   by definition are to be passed through.
