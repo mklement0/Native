@@ -8,13 +8,13 @@ To **install** it for the current user, run `Install-Module Native -Scope Curren
 
 ## Overview
 
-* [`ins` (`Invoke-NativeShell`)](#%60ins%60%20%28%60Invoke-NativeShell%60%29) presents a **unified interface to the platform-native shell**, allowing you to pass a command line either as as an argument - a single string - or via the pipeline
+* [`ins` (`Invoke-NativeShell`)](#ins-invoke-nativeshell) presents a **unified interface to the platform-native shell**, allowing you to pass a command line either as as an argument - a single string - or via the pipeline
   * e.g., `ins 'ver & whoami` on Windows, `ins 'ls -d / | cat -n'` on Unix.
 
-* [`ie` (short for: **I**nvoke (external) **E**xecutable)](#%60ie%60%20%28short%20for%3A%20%2A%2AI%2A%2Anvoke%20%28external%29%20%2A%2AE%2A%2Axecutable%29) allows you to **pass arguments to external programs robustly**, to compensate for PowerShell's broken behavior.
+* [`ie` (short for: **I**nvoke (external) **E**xecutable)](#ie-short-for-invoke-external-executable) allows you to **pass arguments to external programs robustly**, to compensate for PowerShell's broken behavior.
   * e.g., `'a"b' | ie findstr 'a"b'` on Windows, `'a"b' | ie grep 'a"b'` on Unix.
 
-* [`dbea` (`Debug-ExecutableArguments`)](#%60dbea%60%20%28%60Debug-ExecutableArguments%60%29) is a **diagnostic command** for understanding and **troubleshooting how PowerShell passes arguments to external executables**.
+* [`dbea` (`Debug-ExecutableArguments`)](#dbea-debug-executablearguments) is a **diagnostic command** for understanding and **troubleshooting how PowerShell passes arguments to external executables**.
   * e.g., `dbea -- one '' '{ "foo": "bar" }'` vs. - with implicit use of `ie` - `dbea -UseIe -- one '' '{ "foo": "bar" }'`
 
 ### Getting Help
@@ -73,7 +73,7 @@ Presents a unified interface to the platform-native shell (`cmd.exe` on Windows,
 
   * On Windows, a temporary _batch file_ rather than a direct `cmd.exe /c` call is used behind the scenes, (not just) for technical reasons. This means that batch-file syntax must be used, which notably means that loop variables must use `%%`, not just `%`, and that you may escape `%` as `%%` - arguably, this is for the better anyway. The only caveat is that aborting a long-running command with <kbd>Ctrl-C</kbd> will present the infamous `Terminate batch file (y/n)?` prompt; simple repeat <kbd>Ctrl-C</kbd> to complete the termination.
 
-  * `--` can be used to disambiguate pass-through arguments from `ins` own parameters; if you need to pass `--` as a pass-through argument, first precede all pass-through arguments with `--` and then use `--` again.
+  * `--` can be used to disambiguate pass-through arguments from `ins` own parameters; if you need to disambgurate or pass `--` as a pass-through argument, place `--` before the list of pass-through arguments (`ins <ins-parameters> '<command-line>' -- ...`)
 
   * For technical reasons, you must check only `$LASTEXITCODE` for being nonzero in order to determine if the native shell signaled failure; do not use `$?`, which always ends up `$true`. Unfortunately, this means that you cannot meaningfully use this function with `&&` and `||`, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, use the `-e` (`-ErrorOnFailure`) switch.
 
@@ -81,14 +81,14 @@ Presents a unified interface to the platform-native shell (`cmd.exe` on Windows,
 
 Robustly passes arguments through to external executables, with proper support for arguments with embedded `"` (double quotes) and for empty string arguments:
 
-* Examples (without the use of `ie`, these commands wouldn't work as expected as of PowerShell 7.1):
+* Examples (without the use of `ie`, these commands wouldn't work as expected as of PowerShell 7.0):
   * Unix: `'a"b' | ie grep 'a"b'`
   * Windows: `'a"b' | ie findstr 'a"b'`
 
 * Note:
   * Unlike `ins`, `ie` expects you to use _PowerShell_ syntax and pass arguments _individually_, as you normally would in direct invocation; in other words: simply place `ie` as the command name before how you would normally invoke the external executable (if the normal invocation would synctactically require `&`, use `ie` _instead_ of `&`.)
 
-  * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.1, [as summarized in GitHub issue #1995](https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
+  * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.0, [as summarized in GitHub issue #1995](https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
 
   * For technical reasons:
     * The first occurrence of `--` as a parameter is invariably removed by PowerShell; if your arguments include `--`, use the syntax `ie -- ...`
@@ -103,46 +103,46 @@ Robustly passes arguments through to external executables, with proper support f
 
 A diagnostic command for understanding and troubleshooting how PowerShell passes arguments to external executables, similar to the venerable [`echoArgs.exe` utility](https://chocolatey.org/packages/echoargs).
 
-  * Pass arguments as you would to an external executable to see how they would be received by it and, on Windows only, what the entire command line that PowerShell constructed behind the scenes looks like (this doesn't apply on Unix, where executables don't receive a single command line containing all arguments, but - more reliably - an array of individual arguments).  
-    * To prevent pass-through arguments from mistaken for the command's own parameters, place `--` before the pass-through arguments, as shown in the examples.
-    * Use `-ie` (`-UseIe`) in order to see how invocation via `ie` corrects the problems that plague direct invocation as of PowerShell 7.0.  
-    * Use `-UseBatchFile` on Windows to use an argument-printing batch file instead of the .NET helper executable, to see how batch files receive arguments; `-UseWrapperBatchFile` uses an _intermediate_ batch file that passes the arguments through to the .NET helper executable, to see how batch files acting as CLI entry points affect the argument passing.
+* Pass arguments as you would to an external executable to see how they would be received by it and, on Windows only, what the entire command line that PowerShell constructed behind the scenes looks like (this doesn't apply on Unix, where executables don't receive a single command line containing all arguments, but - more reliably - an array of individual arguments).  
+  * To prevent pass-through arguments from being mistaken for the command's own parameters, place `--` before the list of pass-through arguments, as shown in the examples.
+  * Use `-ie` (`-UseIe`) in order to see how invocation via `ie` corrects the problems that plague direct invocation as of PowerShell 7.0.  
+  * Use `-UseBatchFile` on Windows to use an argument-printing batch file instead of the .NET helper executable, to see how batch files receive arguments; `-UseWrapperBatchFile` uses an _intermediate_ batch file that passes the arguments through to the .NET helper executable, to see how batch files acting as CLI entry points affect the argument passing.
 
-  * Examples:
-    * `dbea -- '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b' 'a"b'`
-      * On Windows, you'll see the following output - note how the arguments were _not_ passed as intended:
+* Examples:
+  * `dbea -- '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b' 'a"b'`
+    * On Windows, you'll see the following output - note how the arguments were _not_ passed as intended:
 
-            7 argument(s) received (enclosed in <...> for delineation):
+          7 argument(s) received (enclosed in <...> for delineation):
 
-              <a&b>
-              <3 of snow Nat>
-              <King>
-              <Cole c:\temp>
-              <1\ a>
-              <">
-              <b ab>
+            <a&b>
+            <3 of snow Nat>
+            <King>
+            <Cole c:\temp>
+            <1\ a>
+            <">
+            <b ab>
 
-            Command line (helper executable omitted):
+          Command line (helper executable omitted):
 
-              a&b 3" of snow "Nat "King" Cole" "c:\temp 1\\" "a \" b" a"b
+            a&b 3" of snow "Nat "King" Cole" "c:\temp 1\\" "a \" b" a"b
 
-    * `dbea -ie -- '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b' 'a"b'`
+  * `dbea -ie -- '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b' 'a"b'`
 
-      * Thanks to use of `ie`, you'll see the following output, with the arguments passed correctly:
+    * Thanks to use of `ie`, you'll see the following output, with the arguments passed correctly:
 
-            6 argument(s) received (enclosed in <...> for delineation):
+          6 argument(s) received (enclosed in <...> for delineation):
 
-              <>
-              <a&b>
-              <3" of snow>
-              <Nat "King" Cole>
-              <c:\temp 1\>
-              <a \" b>
-              <a"b>
+            <>
+            <a&b>
+            <3" of snow>
+            <Nat "King" Cole>
+            <c:\temp 1\>
+            <a \" b>
+            <a"b>
 
-            Command line (helper executable omitted):
+          Command line (helper executable omitted):
 
-              "" a&b "3\" of snow" "Nat \"King\" Cole" "c:\temp 1\\" "a \\\" b" a\"b
+            "" a&b "3\" of snow" "Nat \"King\" Cole" "c:\temp 1\\" "a \\\" b" a\"b
 
 ---
 
