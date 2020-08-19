@@ -9,7 +9,7 @@ To **install** it for the current user, run `Install-Module Native -Scope Curren
 ## Overview
 
 * [`ins` (`Invoke-NativeShell`)](#ins-invoke-nativeshell) presents a **unified interface to the platform-native shell**, allowing you to pass a command line either as as an argument - a single string - or via the pipeline
-  * e.g., `ins 'ver & whoami` on Windows, `ins 'ls -d / | cat -n'` on Unix.
+  * e.g., `ins 'ver & whoami'` on Windows, `ins 'ls / | cat -n'` on Unix.
 
 * [`ie` (short for: **I**nvoke (external) **E**xecutable)](#ie-short-for-invoke-external-executable) allows you to **pass arguments to external programs robustly**, to compensate for PowerShell's broken behavior.
   * e.g., `'a"b' | ie findstr 'a"b'` on Windows, `'a"b' | ie grep 'a"b'` on Unix.
@@ -52,7 +52,7 @@ Once the ability for user code to _set_ `$?` [gets implemented](https://github.c
 Presents a unified interface to the platform-native shell (`cmd.exe` on Windows, `/bin/bash` on Unix), allowing you to pass a command line either as as an argument - a single string - or via the pipeline:
 
 * Examples:
-  * Unix: `ins 'ls -d / | cat -n'` or `'ls -d / | cat -n' | ins`
+  * Unix: `ins 'ls / | cat -n'` or `'ls / | cat -n' | ins`
   * Windows: `ins 'ver & whoami'` or `'ver & whoami' | ins`
 
 * Add `-e` (`-ErrorOnFailure`) if you want `ins` to throw a script-terminating error if the native shell reports a nonzero exit code (if `$LASTEXITCODE` is nonzero).
