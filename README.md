@@ -41,7 +41,7 @@ Once the ability for user code to _set_ `$?` [gets implemented](https://github.c
     * `ie -- ...` (`--` only needed if `--` is among the arguments)
 
 * For technical reasons you must ***quote* arguments that have the following form**:
-  * A bareword (unquoted argument) that contains _commas_ - e.g. `a,b`; use `'a,b'` instead.
+  * A bareword (unquoted argument) that contains _commas_ - e.g. `a,b`; use `'a,b'` instead (or `"a,$b"` if string interpolation is needed).
   * Arguments of the form `-foo:bar` and `-foo.bar`; use `'-foo:bar'` and `'-foo.bar'` instead.
   * For details, refer to the `NOTES` section in the output from `Get-Help -Full ie`.
 
