@@ -6,57 +6,102 @@
 
 To **install** it for the current user, run `Install-Module Native -Scope CurrentUser` - see [Installation](#Installation) for details.
 
-The module comes with the following commands:
+## Overview
 
-* **`ins` (`Invoke-NativeShell`)** presents a unified interface to the platform-native shell, allowing you to pass a command line either as as an argument - a single string - or via the pipeline:
+* [`ins` (`Invoke-NativeShell`)](#%60ins%60%20%28%60Invoke-NativeShell%60%29) presents a **unified interface to the platform-native shell**, allowing you to pass a command line either as as an argument - a single string - or via the pipeline
+  * e.g., `ins 'ver & whoami` on Windows, `ins 'ls -d / | cat -n'` on Unix.
+
+* [`ie` (short for: **I**nvoke (external) **E**xecutable)](#%60ie%60%20%28short%20for%3A%20%2A%2AI%2A%2Anvoke%20%28external%29%20%2A%2AE%2A%2Axecutable%29) allows you to **pass arguments to external programs robustly**, to compensate for PowerShell's broken behavior.
+  * e.g., `'a"b' | ie findstr 'a"b'` on Windows, `'a"b' | ie grep 'a"b'` on Unix.
+
+* [`dbea` (`Debug-ExecutableArguments`)](#%60dbea%60%20%28%60Debug-ExecutableArguments%60%29) is a **diagnostic command** for understanding and **troubleshooting how PowerShell passes arguments to external executables**.
+  * e.g., `dbea -- one '' '{ "foo": "bar" }'` vs. - with implicit use of `ie` - `dbea -UseIe -- one '' '{ "foo": "bar" }'`
+
+### Getting Help
+
+All commands come with command-line help; examples, based on `ins`:
+
+* `ins -?` shows brief, syntax-focused help.
+* `help ins -Examples` shows examples.
+* `help ins -Parameter UseSh` shows help for parameter `-UseSh`.
+* `help ins -Full` shows comprehensive help that includes individual parameter descriptions and notes.
+
+### Known Limitations
+
+* With `ins` (`Invoke-NativeShell` and `ie`, for technical reasons, you must **check only `$LASTEXITCODE`** for being nonzero in order to determine if the native shell signaled failure; do not use `$?`, whose value always ends up `$true`. Unfortunately, this means that you cannot meaningfully use these commands with `&&` and `||`, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, use the `-e` (`-ErrorOnFailure`) switch with `ins` or use the `iee` wrapper function for `ie`.
+
+* Passing `--` to any _PowerShell_ command (which this module's commands invariably are) signals to PowerShell's parameter binder that all subsequent arguments are to be treated as positional ones.
+  * Given that this (first) `--` is invariably _removed_ in the process, you need to pass it _again_ if the intent is to pass `--` _as an actual argument_ to the native shell / external executable.
+  * While the behavior of the first `--` is helpful in the case of `ins` and `dbea`, because you can use it to disambiguate pass-through arguments from these commands' _own_ parameters, it may be unexpected in the case of `ie`, _all_ of whose arguments
+  by definition are to be passed through.
+  * Therefore, **use the following invocation patterns** (`...` representing pass-through arguments, possibly including `--`):
+    * `dbea [<own-parameters>] -- ...`
+    * `ins [<own-parameters>] '<command line>' -- ...` (`--` only needed if there are pass-through arguments)
+    * `ie -- ...` (`--` only needed if `--` is among the arguments)
+
+* For technical reasons you must ***quote* arguments that have the following form**:
+  * A bareword (unquoted argument) that contains _commas_ - e.g. `a,b`; use `'a,b'` instead.
+  * Arguments of the form `-foo:bar` and `-foo.bar`; use `'-foo:bar'` and `'-foo.bar'` instead.
+  * For details, refer to the `NOTES` section in the output from `Get-Help -Full ie`.
+
+## Command Descriptions
+
+### `ins` (`Invoke-NativeShell`)
+
+Presents a unified interface to the platform-native shell (`cmd.exe` on Windows, `/bin/bash` on Unix), allowing you to pass a command line either as as an argument - a single string - or via the pipeline:
+
+* Examples:
+  * Unix: `ins 'ls -d / | cat -n'` or `'ls -d / | cat -n' | ins`
+  * Windows: `ins 'ver & whoami'` or `'ver & whoami' | ins`
+
+* Add `-e` (`-ErrorOnFailure`) if you want `ins` to throw a script-terminating error if the native shell reports a nonzero exit code (if `$LASTEXITCODE` is nonzero).
+
+* You can also pipe *data* to `ins`, in which case the command line must be passed as an argument
   * Examples:
-    * Unix: `ins 'ls -d / | cat -n'` or `'ls -d / | cat -n' | ins`
-    * Windows: `ins 'ver & whoami'` or `'ver & whoami' | ins`
+    * Unix: `'foo', 'bar' | ins 'grep bar'`
+    * Windows: `'foo', 'bar' | ins 'findstr "bar"'`
 
-  * Add `-e` (`-ErrorOnFailure`) if you want `ins` to throw a script-terminating error if the native shell reports a nonzero exit code (if `$LASTEXITCODE` is nonzero).
-  
-  * You can also pipe *data* to `ins`, in which case the command line must be passed as an argument
-    * Examples:
-      * Unix: `'foo', 'bar' | ins 'grep bar'`
-      * Windows: `'foo', 'bar' | ins 'findstr "bar"'`
+* You can also treat the native command line like an improvised _script_ (batch file) to which you can pass arguments; if you pipe the script, you must use `-` as the first positional argument to signal that the script is being received via the pipeline (stdin):
+  * Examples:
+    * Unix: `ins 'echo "[$1] [$2]"' one two` or `'echo "[$1] [$2]"' | ins - one two`
+    * Windows: `ins 'echo [%1] [%2]' one two` or `'echo "[%1] [%2]"' | ins - one two`
 
-  * You can also treat the native command line like an improvised _script_ (batch file) to which you can pass arguments; if you pipe the script, you must use `-` as the first positional argument to signal that the script is being received via the pipeline (stdin):
-    * Examples:
-      * Unix: `ins 'echo "[$1] [$2]"' one two` or `'echo "[$1] [$2]"' | ins - one two`
-      * Windows: `ins 'echo [%1] [%2]' one two` or `'echo "[%1] [%2]"' | ins - one two`
+* Note:
+  * Because you're passing a command (line) written for a _different shell_, which has different syntax rules, it must be passed _as a whole_, as a single string. To avoid quoting issues and to facilitate passing multi-line commands with line continuations, you can use a _here-string_ - see below. You can use _expandable_ (here-)strings in order to embed _PowerShell_ variable and expression values in the command line; in that case, escape `$` characters you want to pass through to the native shell as `` `$ ``.
 
-  * Note:
-    * Because you're passing a command (line) written for a _different shell_, which has different syntax rules, it must be passed _as a whole_, as a single string. To avoid quoting issues and to facilitate passing multi-line commands with line continuations, you can use a _here-string_ - see below. You can use _expandable_ (here-)strings in order to embed _PowerShell_ variable and expression values in the command line; in that case, escape `$` characters you want to pass through to the native shell as `` `$ ``.
+  * On Unix-like platforms, `/bin/bash` rather than `/bin/sh` is used as the native shell, given Bash's ubiquity. Use `-sh` (`-UseSh`) to use `/bin/sh` instead.
 
-    * On Unix-like platforms, `/bin/bash` rather than `/bin/sh` is used as the native shell, given Bash's ubiquity. Use `-sh` (`-UseSh`) to use `/bin/sh` instead.
+  * On Windows, a temporary _batch file_ rather than a direct `cmd.exe /c` call is used behind the scenes, (not just) for technical reasons. This means that batch-file syntax must be used, which notably means that loop variables must use `%%`, not just `%`, and that you may escape `%` as `%%` - arguably, this is for the better anyway. The only caveat is that aborting a long-running command with <kbd>Ctrl-C</kbd> will present the infamous `Terminate batch file (y/n)?` prompt; simple repeat <kbd>Ctrl-C</kbd> to complete the termination.
 
-    * On Windows, a temporary _batch file_ rather than a direct `cmd.exe /c` call is used behind the scenes, (not just) for technical reasons. This means that batch-file syntax must be used, which notably means that loop variables must use `%%`, not just `%`, and that you may escape `%` as `%%` - arguably, this is for the better anyway. The only caveat is that aborting a long-running command with <kbd>Ctrl-C</kbd> will present the infamous `Terminate batch file (y/n)?` prompt; simple repeat <kbd>Ctrl-C</kbd> to complete the termination.
+  * `--` can be used to disambiguate pass-through arguments from `ins` own parameters; if you need to pass `--` as a pass-through argument, first precede all pass-through arguments with `--` and then use `--` again.
 
-    * `--` can be used to dismabiguate pass-through arguments from `ins` own parameters; if you need to pass `--` as a pass-through argument, first precede all pass-through arguments with `--` and then use `--` again.
+  * For technical reasons, you must check only `$LASTEXITCODE` for being nonzero in order to determine if the native shell signaled failure; do not use `$?`, which always ends up `$true`. Unfortunately, this means that you cannot meaningfully use this function with `&&` and `||`, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, use the `-e` (`-ErrorOnFailure`) switch.
 
-    * For technical reasons, you must check only `$LASTEXITCODE` for being nonzero in order to determine if the native shell signaled failure; do not use `$?`, which always ends up `$true`. Unfortunately, this means that you cannot meaningfully use this function with `&&` and `||`, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, use the `-e` (`-ErrorOnFailure`) switch.
+### `ie` (short for: **I**nvoke (external) **E**xecutable)
 
-* **`ie`** (short for: **I**nvoke (external) **E**xecutable) robustly passes arguments through to external executables, with proper support for arguments with embedded `"` (double quotes) and for empty string arguments:
+Robustly passes arguments through to external executables, with proper support for arguments with embedded `"` (double quotes) and for empty string arguments:
 
-  * Examples (without the use of `ie`, these commands wouldn't work as expected, as of PowerShell 7.0):
-    * Unix: `'a"b' | ie grep 'a"b'`
-    * Windows: `'a"b' | ie findstr 'a"b'`
+* Examples (without the use of `ie`, these commands wouldn't work as expected as of PowerShell 7.1):
+  * Unix: `'a"b' | ie grep 'a"b'`
+  * Windows: `'a"b' | ie findstr 'a"b'`
 
-  * Note:
-    * Unlike `ins`, `ie` expects you to use _PowerShell_ syntax and pass arguments _individually_, as you normally would in direct invocation; in other words: simply place `ie` as the command name before how you would normally invoke the external executable (if the normal invocation would synctactically require `&`, use `ie` _instead_ of `&`.)
+* Note:
+  * Unlike `ins`, `ie` expects you to use _PowerShell_ syntax and pass arguments _individually_, as you normally would in direct invocation; in other words: simply place `ie` as the command name before how you would normally invoke the external executable (if the normal invocation would synctactically require `&`, use `ie` _instead_ of `&`.)
 
-    * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.0, [as summarized in GitHub issue #1995](https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
+  * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.1, [as summarized in GitHub issue #1995](https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
 
-    * For technical reasons:
-      * The first occurrence of `--` as a parameter is invariably removed by PowerShell; if your arguments include `--`, use the syntax `ie -- ...`
-      * You must check only `$LASTEXITCODE` for being nonzero in order to determine if the executable signaled failure; do not use `$?`, which always ends up equal to `$true`. Unfortunately, this means that you cannot meaningfully use this function with `&&` and `||`, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, you can use the `iee` function: see below.
+  * For technical reasons:
+    * The first occurrence of `--` as a parameter is invariably removed by PowerShell; if your arguments include `--`, use the syntax `ie -- ...`
+    * You must check only `$LASTEXITCODE` for being nonzero in order to determine if the executable signaled failure; do not use `$?`, which always ends up equal to `$true`. Unfortunately, this means that you cannot meaningfully use this function with `&&` and `||`, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, you can use the `iee` wrapper function: see below.
 
-    * `ie` should be fully robust on Unix-like platforms, but on Windows the fundamental nature of argument passing to a process via a single string that encodes all arguments prevents a fully robust solution. However, `ie` tries hard to make the vast majority of calls work, by automatically handling special quoting needs for batch files and, in Powershell versions 5.1 and above, for executables such as `msiexec.exe` / `msdeploy.exe` and `cmdkey.exe` (run `Get-Help ie -Full` for details); by default it adheres to the [Microsoft C/C++ quoting conventions for process command lines](https://docs.microsoft.com/en-us/cpp/cpp/main-function-command-line-args?view=vs-2019#parsing-c-command-line-arguments), although in Windows PowerShell `""` rather than `\"` is used for escaping embedded `"` characters, for technical reasons. If `ie` doesn't work in a given call, use direct invocation with `--%`, the [stop-parsing symbol](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Parsing) to control quoting explicitly, or call via `ins` (given that `cmd.exe` ultimately uses the quoting as specified).
+  * `ie` should be fully robust on Unix-like platforms, but on Windows the fundamental nature of argument passing to a process via a single string that encodes all arguments prevents a fully robust solution. However, `ie` tries hard to make the vast majority of calls work, by automatically handling special quoting needs for batch files and, in Powershell versions 5.1 and above, for executables such as `msiexec.exe` / `msdeploy.exe` and `cmdkey.exe` (run `Get-Help ie -Full` for details); by default it adheres to the [Microsoft C/C++ quoting conventions for process command lines](https://docs.microsoft.com/en-us/cpp/cpp/main-function-command-line-args?view=vs-2019#parsing-c-command-line-arguments), although in Windows PowerShell `""` rather than `\"` is used for escaping embedded `"` characters, for technical reasons. If `ie` doesn't work in a given call, use direct invocation with `--%`, the [stop-parsing symbol](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Parsing) to control quoting explicitly, or call via `ins` (given that `cmd.exe` ultimately uses the quoting as specified).
 
-  * Use the closely related **`iee`** function (the extra "e" standing for "error") if you want a script-terminating error to be thrown if the external executable reports a nonzero exit code (if `$LASTEXITCODE` is nonzero); e.g., the following command would throw an error:
-    * `iee whoami -nosuchoptions`
+* Use the closely related **`iee`** function (the extra "e" standing for "error") if you want a script-terminating error to be thrown if the external executable reports a nonzero exit code (if `$LASTEXITCODE` is nonzero); e.g., the following command would throw an error:
+  * `iee whoami -nosuchoptions`
 
-* **`dbea` (`Debug-ExecutableArguments`)** is a diagnostic command for understanding and troubleshooting how PowerShell passes arguments to external executables, similar to the venerable [`echoArgs.exe` utility](https://chocolatey.org/packages/echoargs).
+### `dbea` (`Debug-ExecutableArguments`)
+
+A diagnostic command for understanding and troubleshooting how PowerShell passes arguments to external executables, similar to the venerable [`echoArgs.exe` utility](https://chocolatey.org/packages/echoargs).
 
   * Pass arguments as you would to an external executable to see how they would be received by it and, on Windows only, what the entire command line that PowerShell constructed behind the scenes looks like (this doesn't apply on Unix, where executables don't receive a single command line containing all arguments, but - more reliably - an array of individual arguments).  
     * To prevent pass-through arguments from mistaken for the command's own parameters, place `--` before the pass-through arguments, as shown in the examples.
@@ -98,15 +143,6 @@ The module comes with the following commands:
             Command line (helper executable omitted):
 
               "" a&b "3\" of snow" "Nat \"King\" Cole" "c:\temp 1\\" "a \\\" b" a\"b
-
----
-
-All commands come with **help**; examples, based on `ins`:
-
-* `ins -?` shows brief, syntax-focused help.
-* `help ins -Examples` shows examples.
-* `help ins -Parameter UseSh` shows help for parameter `-UseSh`.
-* `help ins -Full` shows comprehensive help that includes individual parameter descriptions and notes.
 
 ---
 

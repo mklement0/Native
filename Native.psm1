@@ -119,7 +119,7 @@ IMPORTANT:
 Any addtional arguments to pass through to the ad-hoc script passed to
 -CommandLine or supplied via the pipeline.
 
-Important:
+IMPORTANT:
 
 * These arguments bind to the standard batch-file / shell-script 
   parameters starting with %1 / $1. See the NOTES section for more information.
@@ -127,11 +127,15 @@ Important:
 * If you pass the pass-through arguments individually, positionally, 
   precede them with an extra '--' argument to avoid name conflicts with
   this function's own parameters (which includes the supported common
-  parameters).
+  parameters). This is also necessary if you want to pass -- through to the
+  native shell.
 
 * If the command line is supplied via the pipeline, you must either pass '-'
   as -CommandLine or use -ArgumentList / -Args explicitly and specify the 
   pass-through arguments *as an array*.
+
+* For technical reasons you must *quote* arguments that contain commas, 
+  look like `-foo:bar` or `-foo.bar`, e.g. `'foo,bar'` instead of `foo,bar`.
 
 .PARAMETER UseSh
 Supported on Unix-like platforms only (ignored on Windows); aliased to -sh.
@@ -482,8 +486,11 @@ NOTES section. In the rare event that you do need --%, use it with direct
 invocation, as usual, or invoke via ins (Invoke-NativeShell).
 
 * -- as an argument is invariably removed by PowerShell on invocation, for
-  technical reasons. If you need to pass -- through to the executable, pass
-  it *twice*.
+  technical reasons. If you need to pass -- through to the executable, use
+  the form `ie -- ...`, i.e. use an extra -- before all arguments.
+
+* For technical reasons you must *quote* arguments that contain commas,
+  look like `-foo:bar` or `-foo.bar`, e.g. `'foo,bar'` instead of `foo,bar`.
 
 Since the invocation solely relies on PowerShell's own argument-mode
 syntax and since, as in direct invocation, no other shell is involved,
@@ -532,6 +539,25 @@ That $? ends up $true even if the executable reported a nonzero exit code
 (reflected in $LASTEXITCODE) cannot be avoided as of v7.1; however there are 
 plans to eventually make $? settable from user code; see
 https://github.com/PowerShell/PowerShell/issues/10917#issuecomment-550550490
+
+That you must *quote* arguments that contain commas, look like `-foo:bar` or 
+`-foo.bar`:
+
+ * is unavoidable in the case of values with commas: PowerShell-native commands
+  - which this module's commands are - receive such arguments differently
+  than external executables, namely as *arrays*, and passing such arrays on to
+  external executables invariably passes the array's elements as *individual
+  argumetns*:
+     * `a,b` and `a, b` both become array `'a', 'b'`, which, when passed to an
+       external exeuctables passes two separate arguments `a` and `b`.
+
+ * in the case of `-foo:bar` and `-foo.bar` it is arguably bugs that cause
+   such arguments to be broken into *two* - see these issues:
+   https://github.com/PowerShell/PowerShell/issues/6360
+   https://github.com/PowerShell/PowerShell/issues/6291
+
+These transformations happen before this module's commands receive their
+arguments, without their knowledge, so they cannot be compensated for.
 
 External executable in this context means any executable that PowerShell must
 invoke via a child process, which encompasses not just binary executables,
@@ -963,9 +989,13 @@ Acts like an external executable that prints the arguments passed to it in
 diagnostic form, similar to what the well-known third-party echoArgs.exe 
 utility does on Windows.
 
-IMPORTANT: To prevent confusion between this command's own parameters
-           and pass-through arguments, precede the latter with --
-           E.g.: dbea -- sed -i 's/a/b/' 'file 1.txt'
+IMPORTANT: 
+ * To prevent confusion between this command's own parameters
+   and pass-through arguments, precede the latter with --
+   E.g.: dbea -- sed -i 's/a/b/' 'file 1.txt'
+
+ * For technical reasons you must *quote* arguments that contain commas, 
+   look like `-foo:bar` or `-foo.bar`, e.g. `'foo,bar'` instead of `foo,bar`.
 
 On Windows, the whole command line is printed as well.
 On Unix, there is no point in doing so, as processes there do not receive a
