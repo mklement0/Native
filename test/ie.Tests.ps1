@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 
 # For older WinPS versions: Set OS/edition flags (which in PSCore are automatically defined).
 # !! At least with Pester v5.x, script-level variables must explicitly created with scope $script:
+# !! Do NOT *refer to* these variables with $script: below, however.
 if (-not (Test-Path Variable:IsWindows)) { $script:IsWindows = $true }
 if (-not (Test-Path Variable:IsCoreCLR)) { $script:IsCoreCLR = $false }
 
@@ -90,17 +91,25 @@ Describe 'ie tests' {
           Write-Warning "Partial quoting of msiexec-style arguments with spaces not supported in v3 and v4, skipping test."
           'foo=bar"none'
       } else {
-        'foo=bar none', '/foo:bar none', '-foo:bar none', 'foo=bar"none'  
+        'foo=bar none', '/foo:bar none', '-foo:bar none', 'foo=bar "stuff" none', 'foo=bar"none'
       }
       
       $argsToPartiallyQuote | ForEach-Object {
   
         $exeArgs = $_, 'a " b'
 
-        # Not only must the value part be selectively quoted, ""-escaping must also be triggered (it's what msiexec requires).
-        # (In WinPS we use ""-escaping by default anyway, but not in PS Core).
-        $partiallyQuotedArg = (($_ -replace '"', '""') -replace '(?<=[:=]).+$', '"$&"')
-        $expectedRawCmdLine = '{0} {1}' -f $partiallyQuotedArg, '"a "" b"'
+        # The value part be selectively quoted.
+        # ""-escaping must also be triggered (it's what msiexec requires).
+        # !! In WinPS we use ""-escaping by default anyway, to work around legacy bugs, 
+        # !! but in *PS Core* we default to \"-escaping, because it is the safer choice; as a nod to 
+        # !! these high-profile CLIs, we have *hard-coded exceptions for 'msiexece' and 'msdeploy' there.
+        # !! We therefore can't test this aspect on PS Core. A manual way to do it is to create (temporary)
+        # !! copies of de.exe, name them 'msiexec.exe' and 'msdeploy.exe', then call them with `ie`; e.g.:
+        # !!
+        # !!   'msiexec.exe', 'msdeploy.exe' | % { cpi -ea stop (gcm de.exe).Path "./$_"; ie "./$_" 'foo=bar none', '/foo:bar none', '-foo:bar none', 'foo=bar "stuff" none', 'foo=bar"none'; ri "./$_" }
+        # !!  
+        $partiallyQuotedArg = (($_ -replace '"', ('""', '\"')[$IsCoreCLR]) -replace '(?<=[:=]).+$', '"$&"')
+        $expectedRawCmdLine = '{0} {1}' -f $partiallyQuotedArg, ('"a "" b"', '"a \" b"')[$IsCoreCLR]
 
         # Run dbea and extract the raw command line from the output (last non-blank line.)
         $rawCmdLine = ((dbea -UseIe -- $exeArgs) -notmatch '^\s*$')[-1].Trim()

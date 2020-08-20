@@ -45,6 +45,14 @@ Once the ability for user code to _set_ `$?` [gets implemented](https://github.c
   * Arguments of the form `-foo:bar` and `-foo.bar`; use `'-foo:bar'` and `'-foo.bar'` instead.
   * For details, refer to the `NOTES` section in the output from `Get-Help -Full ie`.
 
+* **Limitations of the escaping of embedded (verbatim) `"` on Windows**, which apply to both `ie` and `ins`, because the latter uses the former behind the scenes:
+  * In _PowerShell [Core]_, `\"` is used to escape `"` by default, because it is the safest choice.
+    * An exception is made for the high-profile `msiexec.exe` and `msdeploy.exe` CLIs, which support `""`-escaping only.
+    * Should there be other CLIs that also support `""`-escaping only, direct invocation and use of `--%`, the [stop-parsing symbol operator](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Parsing) is required to pass arguments with embedded `"` chars. to them.
+  * In _Windows PowerShell_, `""` is used by default, to work around legacy bugs.
+    * An exception is made for the following CLIs, which are known to accept `\"`-escaping only: PowerShell's own CLI (both editions), `ruby`, and `perl`.
+    * CLIs that use the [`CommandLineToArgvW`](https://docs.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-getcommandlinew) Windows API function rather than the C/C++ runtime to parse their command lines do _not_ support `""`-escaping. Direct invocation and use of `--%` is required to pass arguments with embedded `"` chars. to them.
+
 ## Command Descriptions
 
 ### `ins` (`Invoke-NativeShell`)

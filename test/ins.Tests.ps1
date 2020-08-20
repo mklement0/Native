@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 
 # For older WinPS versions: Set OS/edition flags (which in PSCore are automatically defined).
 # !! At least with Pester v5.x, script-level variables must explicitly created with scope $script:
+# !! Do NOT *refer to* these variables with $script: below, however.
 if (-not (Test-Path Variable:IsWindows)) { $script:IsWindows = $true }
 if (-not (Test-Path Variable:IsCoreCLR)) { $script:IsCoreCLR = $false }
 

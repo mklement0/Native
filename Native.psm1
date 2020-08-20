@@ -467,7 +467,7 @@ normally be necessary, use 'ie' *instead* of it). E.g., on Unix:
 
   ie printf '"%s" ' print these arguments quoted
   
-Note:
+IMPORTANT:
 
 * To check if the executable signaled failure, see if $LASTEXITCODE is nonzero.
 Do not use $?, which always ends up as $true.
@@ -596,7 +596,6 @@ letters, digits, and underscores:
 
 If such an argument is present:
 
-* Embedded double quotes, if any, are escaped as "" in all arguments.
 * In PowerShell v5.1 and above, if the <value> part has spaces, only *it* is 
   enclosed in double quotes, *not* the argument *as a whole* (which is what
   PowerShell - justifiably - does by default); e.g., a verbatim argument
@@ -607,21 +606,35 @@ If such an argument is present:
   Unfortunately, this accommodation doesn't work in PowerShell v3 and v4, so
   you'll have to use --% or Invoke-NativeShell there.
 
-There is one - presumably quite rare - edge case that cannot be handled
-correctly in any of thes supported Windows PowerShell versions:
+* Additionally, embedded double quotes, if any, are escaped as "":
+  * for `msiexec` abd `msideploy` *only*, in PowerShell *Core*; this means
+    that if there are other CLIs that *only* support ""-quoting, they must
+    be called directly, using --% to accommodate these quoting requirements.
+  * for *all* executables, in *Windows PowerShell*, where this function
+    generally defaults to "" (see below).
 
-* If the target executable requires escaping embedded " as \" and ...
+There is one - presumably quite rare - edge case that cannot be handled
+correctly in any of the supported *Windows PowerShell* versions:
+
+* If the target executable supports only \"-escaping of  embedded " and ...
 * ... an argument has a non-initial embedded " not preceded by a space char;
   e.g., `3" of snow`; in that event, Windows PowerShell neglects to
   enclose the whole argument in double quotes, so that *3* arguments end
   up getting passed.
 
-Only the following target executables trigger \" escaping by this function: 
-ruby, perl, pwsh, powershell.
-
 In Windows PowerShell, "" is by default used for "-escaping, to minimize the
 risk of this problem occurring.
+Only the following target executables trigger \" escaping there: 
+ruby, perl, pwsh, powershell.
+
 PowerShell Core isn't affected to begin with, so \" is used by default there.
+
+Note: The use of ""-escaping by default in *Windows PowerShell* is a
+compromise that favors avoiding broken behavior with embedded quotes over
+supporting CLIs that do not support ""-escaping. Most CLIs on Windows support
+*both* "" and \"-escaping, but notably those that use the CommandLineToArgvW 
+WinAPI function to parse their command line do not. However, the assumption is
+that most CLIs use the C/C++ runtime's argv parsing instead.
 
 #>
 
@@ -682,18 +695,19 @@ PowerShell Core isn't affected to begin with, so \" is used by default there.
   # Determine the base name and filename extension of the target executable, as we need to vary 
   # the quoting behavior based on it:
   $null = $app.Path -match '[/\\]?(?<exe>[^/\\]+?)(?<ext>\.[^.]+)?$'
+  $exeBaseName, $ext = $Matches['exe'], $Matches['ext']
 
   # Infer various executable characteristics:
-  $isBatchFile = $IsWindows -and $Matches['ext'] -in '.cmd', '.bat'
-  $isCmdExe = $IsWindows -and ($Matches['exe'] -eq 'cmd' -and $Matches['ext'] -in $null, '.exe') # cmd.exe, the legacy Windows shell
+  $isBatchFile = $IsWindows -and $ext -in '.cmd', '.bat'
+  $isCmdExe = $IsWindows -and ($exeBaseName -eq 'cmd' -and $ext -in $null, '.exe') # cmd.exe, the legacy Windows shell
   # See if a PowerShell CLI is being invoked, so we can detect whether a *script block* is among the arguments,
   # which causes PowerShell to transform the invocation into a Base64-encoded one using the -encodedCommand CLI parameter.
-  $isPsCli = $Matches['exe'] -in 'powershell', 'pwsh' -and $Matches['ext'] -in $null, '.exe'
+  $isPsCli = $exeBaseName -in 'powershell', 'pwsh' -and $ext -in $null, '.exe'
   # Determine whether the target executable *only* supports \" for "-escaping.
   #  * On Unix, that applies to *all* executables (if invoked via a pseudo-command line assigned to ProcessStartInfo.Arguments, as PowerShell currently does).
   #  * On Windows, where most CLIs support *both* \" and "", supporting \" *only* is limited to a few well-known CLIs (of course, there could be more):
   #      ruby, perl, and PowerShell's own CLIs (pwsh, powershell)
-  $supportsBackslashDQuoteOnly = -not $IsWindows -or (($Matches['exe'] -in 'perl', 'ruby', 'powershell', 'pwsh' -and $Matches['ext'] -in $null, '.exe') -or ($Matches['ext'] -in '.pl', '.rb'))
+  $supportsBackslashDQuoteOnly = -not $IsWindows -or (($exeBaseName -in 'perl', 'ruby', 'powershell', 'pwsh' -and $ext -in $null, '.exe') -or ($ext -in '.pl', '.rb'))
 
   # A regex that detects cmd.exe metacharacters in an argument.
   $reCmdExeMetaChars = '[&|<>^,;]'
@@ -730,7 +744,7 @@ PowerShell Core isn't affected to begin with, so \" is used by default there.
       # * On Windows: We only use "" if we have to: for batch files and direct cmd.exe calls.
       #               The assumption is that all executables support \" (typically in *addition* to the Windows-only "").
       #               Batch-file caveat: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), the "" quoting
-      #                                could still break if the ultimate target executable only supports \"
+      #                                  could still break if the ultimate target executable only supports \"
       $isBatchFile -or $isCmdExe
     }
     else {
@@ -738,6 +752,9 @@ PowerShell Core isn't affected to begin with, so \" is used by default there.
       # So as to eliminate edge cases where \" doesn't work due to PowerShell's re-quoting (see below) as much as possible, 
       # we REVERSE the logic and *use "" by default*, except for known exceptions: Ruby, Perl, and the PowerShell CLIs (both editions) themselves, which all support \" only.
       # All other executables are assumed to support "".
+      # !! THIS IS NOT NECESSARILY TRUE, HOWEVER, because executables that use the CommandLineToArgvW WinAPI function to parse their arguments do NOT support ""
+      # !! However, we still go with "" by default, under the assumption that CLI executables are more likely to use the C/C++ runtime's argv parsing, which DOES support "".
+      # !! This is invariably a COMPROMISE.
       -not $supportsBackslashDQuoteOnly
     }
     
@@ -827,7 +844,11 @@ PowerShell Core isn't affected to begin with, so \" is used by default there.
         #    (cmdkey.exe doesn't support embedded " at all.):
         #    From the msiexec docs: " ... enclose the section with a *second pair of quotation marks*." - see https://docs.microsoft.com/en-us/windows/win32/msi/command-line-options
         #  * Therefore, we must use ""-escaping, and apply it to *all* arguments - see additional processing pass with $placeholderChar below.
-        $useDoubledDQuotes = $true
+        #  !! In Windows PowerShell we already default to ""-escaping to work around legacy bugs, but in PS Core we do *not*, given that not
+        #  !! all CLIs can be expected to support it, notably not those using the CommandLineToArgvW WinAPI function.
+        #  !! Given the high profile of msiexec.exe and msdeploy.exe, we *hard-code exceptions for it* here (cmdkey.exe needn't be considered, because it fundamentally doesn't support embedded ").
+        $useDoubledDQuotes = $useDoubledDQuotes -or ($exeBaseName -in 'msiexec', 'msdeploy' -and $ext -in $null, '.exe')
+
       }
       elseif ($mustDQuoteSpacelessArg) {
         # For batch files, explicitly enclose in "..." those arguments that PowerShell would pass unquoted due to absence of whitespace
