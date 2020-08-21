@@ -33,7 +33,7 @@ Describe 'ie tests' {
   
       # Note: Avoid arguments with embedded newlines, because dbea -Raw
       #       doesn't support them due to line-by-line output.
-      $exeArgs = '', 'a&b', '3 " of snow', 'Nat "King" Cole', 'c:\temp 1\', 'a \" b', 'a"b'
+      $exeArgs = '', 'a&b', '3 " of snow', 'Nat "King" Cole', 'c:\temp 1\', 'a b\\', 'a \" b', 'a \"b c\" d', 'a"b', 'ab\'
   
       $result = dbea -Raw -UseIe -- $exeArgs
   
@@ -91,12 +91,14 @@ Describe 'ie tests' {
           Write-Warning "Partial quoting of msiexec-style arguments with spaces not supported in v3 and v4, skipping test."
           'foo=bar"none'
       } else {
-        'foo=bar none', '/foo:bar none', '-foo:bar none', 'foo=bar "stuff" none', 'foo=bar"none'
+        # !! In PS Core, verbatim `foo=bar"none` would only become `'foo="bar""none"` if the executable were msiexec.exe, msdeploy.exe, or cmdkey.exe; 
+        # !! otherwise - as in these tests - \"-escaping kicks in and `foo=bar"none` becomes `foo=bar\"none` instead - without syntactic double-quoting around the value.
+        'foo=bar none', '/foo:bar none', '-foo:bar none', 'foo=bar "stuff" none' + ('foo=bar"none', @())[$IsCoreCLR]
       }
       
       $argsToPartiallyQuote | ForEach-Object {
   
-        $exeArgs = $_, 'a " b'
+        $exeArgs = $_, 'a " b'  # Add a second argument.
 
         # The value part be selectively quoted.
         # ""-escaping must also be triggered (it's what msiexec requires).

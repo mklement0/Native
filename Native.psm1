@@ -703,18 +703,17 @@ that most CLIs use the C/C++ runtime's argv parsing instead.
   # See if a PowerShell CLI is being invoked, so we can detect whether a *script block* is among the arguments,
   # which causes PowerShell to transform the invocation into a Base64-encoded one using the -encodedCommand CLI parameter.
   $isPsCli = $exeBaseName -in 'powershell', 'pwsh' -and $ext -in $null, '.exe'
+  # See if the exe is one of the high-profile CLIs that require *partial* double-quoting of arguments such as `FOO="bar none"`.
+  # Also, these exes require ""-escaping (except cmdkey.exe, which doesn't support embedded " at all).
+  $isMsiExecLikeExe = $exeBaseName -in 'msiexec', 'msdeploy', 'cmdkey' -and $ext -in $null, '.exe'
   # Determine whether the target executable *only* supports \" for "-escaping.
   #  * On Unix, that applies to *all* executables (if invoked via a pseudo-command line assigned to ProcessStartInfo.Arguments, as PowerShell currently does).
   #  * On Windows, where most CLIs support *both* \" and "", supporting \" *only* is limited to a few well-known CLIs (of course, there could be more):
   #      ruby, perl, and PowerShell's own CLIs (pwsh, powershell)
   $supportsBackslashDQuoteOnly = -not $IsWindows -or (($exeBaseName -in 'perl', 'ruby', 'powershell', 'pwsh' -and $ext -in $null, '.exe') -or ($ext -in '.pl', '.rb'))
 
-  # A regex that detects cmd.exe metacharacters in an argument.
-  $reCmdExeMetaChars = '[&|<>^,;]'
-
   # Construct the array of escaped arguments, if necessary.
   # Note: We cannot use .ForEach('GetType'), because we must remain PSv3-compatible.
-  $escapingHappened = $false
   [array] $escapedArgs = 
   if ($null -eq $argsForExe) {
     # To be safe: If there are no arguments to pass, use an *empty array* for splatting so as
@@ -735,17 +734,16 @@ that most CLIs use the C/C++ runtime's argv parsing instead.
   }
   else {
     # Escape all arguments properly to pass them through as seen verbatim by PowerShell.
-    $escapingHappened = $true
 
     # Decide whether to escape embedded double quotes as \" or as "", based on the target executable.
     $useDoubledDQuotes = if ($IsCoreCLR) {
       # PSCore:
       # * On Unix: we always use \" (which ProcessStartInfo.Arguments recognizes when it parses the pseudo command line into the array of arguments).
-      # * On Windows: We only use "" if we have to: for batch files and direct cmd.exe calls.
+      # * On Windows: We only use "" if we have to: for batch files and direct cmd.exe calls, and for misexec-like executables.
       #               The assumption is that all executables support \" (typically in *addition* to the Windows-only "").
       #               Batch-file caveat: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), the "" quoting
       #                                  could still break if the ultimate target executable only supports \"
-      $isBatchFile -or $isCmdExe
+      $isBatchFile -or $isCmdExe -or $isMsiExecLikeExe
     }
     else {
       # WinPS:
@@ -757,20 +755,13 @@ that most CLIs use the C/C++ runtime's argv parsing instead.
       # !! This is invariably a COMPROMISE.
       -not $supportsBackslashDQuoteOnly
     }
+    $escapedDQuote = ('\"', '""')[$useDoubledDQuotes]
     
-    # !! The above represents a *default* escaping style that *may change* during examination
-    # !! of the individual arguments* - namely if we encounter msiexec-style `<word>=<value with spaces>` arguments.
-    # !! We therefore use a preliminary *placeholder* to replace `"` chars. in need of escaping, and only once we
-    # !! know what escape sequence to use, after all arguments have been processed, can we replace the placeholder
-    # !! with that sequence.
-    $placeholderChar = [char] 0xfffd # use the Unicode replacment char., U+FFFD (`�`, http://www.fileformat.info/info/unicode/char/fffd)
-
     foreach ($arg in $argsForExe) {
 
       if ($arg -isnot [string]) {
         $arg = "$arg"  # Make sure that each argument is a string, so we can analyze the string representation with respect to quoting.
       }
-      $origArg = $arg # Save the original, but stringified form of the arguement.
 
       if ('' -eq $arg) { '""'; continue } # Empty arguments must be passed as `'""'`(!), otherwise they are omitted.
       # Note: $null values - which we want to ignore - are seemingly automatically eliminated during splatting, which we use below.
@@ -778,132 +769,75 @@ that most CLIs use the C/C++ runtime's argv parsing instead.
       # Determine argument characteristics.
       $hasDQuotes = $arg.Contains('"')
       $hasSpaces = $arg.Contains(' ')
+      # Determine if *explicit* double-quoting must be used, as a *workaround*:
+      #  * On Unix:
+      #     * Never: letting PowerShell automatically put the enclosing "..." around arguments with spaces on the pseudo-commad line assigned to ProcessStartInfo.Arguments is sufficient.
+      #  * On Windows:
+      #     * if ""-escaping is used and a (space-less) argument contains "
+      #     * additionally, if a batch file is called and the argument contains cmd.exe metacharacters such as "&"
+      #     * Potentially (determined below), if *partial* double-quoting is needed (e.g., `FOO="bar none"`)
+      $mustManuallyDQuote = $IsWindows -and -not $hasSpaces -and (($useDoubledDQuotes -and $hasDQuotes) -or ($isBatchFile -and $arg -match '[&|<>^,;]'))
+      # Determine if the argument must *end up* with double-quoting on the process command line on Windows, 
+      # whether applied as a workaround explicitly by us, or whether triggered by PowerShell due to embedded spaces.
+      $mustEndUpDQuoted = $hasSpaces -or $mustManuallyDQuote
 
-      if ($hasDQuotes) {
-        # First escaping pass: deal with *embedded* " chars. (those that are *part of the value*).
-
-        # First, always double any preexisting `\` instances before embedded `"` chars.
-        # so that `\"` isn't interpreted as an escaped `"`.
-        $arg = $arg -replace '(\\+)"', '$1$1"'
-
-        # Then, escape the *embedded* `"` chars. either as `\"` or as `""`.
-        # !! We use a placeholder for now - see comments above.
-        $arg = $arg -replace '"', $placeholderChar
-
-        # !! Problematic edge case we cannot fix, but it should happen very rarely:
-        # !!  * in WinPS
-        # !!  * if \"-escaping *must* be used - which should be rare; we now default to ""
-        # !! WinPS is broken with *verbatim* arguments such as `3" of snow` (from '3" of snow') and `foo="bar none"` (from 'foo="bar none"' - note that these " would be *data*, not syntax), 
-        # !! which it *doesn't* wrap in "..." if the embedded " are \"-escaped (or not escaped at all).
-        # !! The bug seems to be triggered by a non-initial " not preceded by a space.
-        # !! Unfortunately, we can NOT compensate for that, because trying to pass `"3\" of snow"` - with embedded
-        # !! outer quoting - then causes the engine to add *additional* outer "..." quoting, ultimately and invariably passing `""3\" of snow""`, which is broken 
-        # if (-not $IsCoreCLR -and -not $useDoubledDQuotes -and $hasSpaces -and $arg -match '^[^ "]+"') {
-        #   $arg = '"{0}"' -f $arg # !! DOES NOT WORK.
-        # }
-
+      # Windows only:
+      # See if *partial double-quoting for msiexec-style CLIs* must be applied (e.g., `FOO="bar none"` or `/foo:"bar none"` / `-foo:"bar none"`)
+      # (By default, PowerShell - justifiably - passes such arguments as `"<propertyOrOptionName>=value with spaces"`, i.e. enclosed in double quotes *as a whole*,  which breaks such CLIs.)
+      # Note: 
+      #  * ":" only triggers this quoting if the argument starts wtih "/"  or "-", so that we don't accidentally turn `c:\program files` into `c:\"program files"`.
+      #  * We do NOT restrict this quoting to when $isMsiExecLikeExe is $true, so as to cover potential other CLIs that need this quoting.
+      #    However, given that in *PS Core* we use ""-escaping *only* when $isMsiExecLikeExe is $true, i.e. if specific executables are detected, any other CLIs
+      #    must understand \"-escaping if embedded " are present for the call to succeed (in *Windows PowerShell*, we *default* to ""-escaping to work around legacy bugs).
+      #  * The partial double-quoting should be benign if it isn't actually needed, because conventional CLIs parse both `FOO="bar none"` and `"FOO=bar none"` as verbatim `FOO=bar none`.
+      #  * CAVEAT: In WinPS v3 and v4 only, *a partially quoted value that contains spaces*, such as `foo="bar none"`,
+      #            causes the engine to still enclose the entire argument in "...", which cannot be helped.
+      #            Only a *space-less* value that needs double-quoting is handled correctly (which may never occur in practice).
+      #            Calls to msiexec / msdeploy and cmdkey with values with spaces will therefore break and require --% in v3 and v4 - 
+      #            we could blindly still try the partial quoting, as the call will break either way, but it's better to highlight PowerShell's built-in behavior.
+      $mustPartiallyDQuote = $IsWindows -and $mustEndUpDQuoted -and $arg -match '^([/-]\w+[=:]|\w+=)(.+)$' -and ($PSVersionTable.PSVersion.Major -ge 5 -or -not $hasSpaces)
+      if ($mustPartiallyDQuote) {
+        # Split into - by definition pass-as-unquoted - prefix and the needs-double-quoting suffix.
+        $prefix, $arg = $Matches[1], $Matches[2]
+        $mustManuallyDQuote = $true
       }
-
-      # Write-Debug "after d-quote placeholder placement: $arg"
-
-      # On Windows, if a space-less argument has an embedded " and/or a space-less argument contains a cmd.exe metacharacter, we enclose the
-      # entire argument in `"..."`. Note: For non-batch files, this isn't strictly necessary *if \"-escaping ends up getting used*.
-      # That is, `a\"b` should work fine; however, it simplifies our escaping to pass the equivalent form `"a\"b"`.
-      $mustDQuoteSpacelessArg = $IsWindows -and -not $hasSpaces -and ($hasDQuotes -or ($isBatchFile -and $arg -match $reCmdExeMetaChars))
-
-      # We accommodate programs such as msiexec / msdeploy and cmdkey, which expect arguments such as:
-      #  * SOMEPROPERTY="value with spaces"
-      #  * /password:"value with spaces"` or -password:"value with spaces"
-      # to be passed *exactly with this quoting* - around the *value*part* only.
-      # By default, PowerShell - justifiably - passes them as `"<propertyOrOptionName>=value with spaces"`, i.e. enclosed in double quotes *as a whole*,  which breaks such CLIs.
-      # Note: Rather than hard-code a list of CLIs to apply this fix to, we rely on all well-behaved CLIs to be 
-      #       capable of parsing compound tokens such as `PROP="value with spaces"` ultimately as verbatim 
-      #      `PROP=value with spaces`, so that the partial quoting is benign for CLIs that don't need it.
-      $mayRequirePartialDQuoting = $IsWindows -and -not $supportsBackslashDQuoteOnly -and ($arg -match '^(?<key>[/-]\w+)(?<sep>:)(?<value>.+)$' -or $arg -match '^(?<key>\w+)(?<sep>=)(?<value>.+)$')
-
-      if ($mayRequirePartialDQuoting) {
-        # See comment above.
-
-        # Write-Debug "may require partial d-quoting: $arg`n$($Matches | Out-String)"
-
-        if ($mustDQuoteSpacelessArg -or ($hasSpaces -and $PSVersionTable.PSVersion.Major -ge 5) ) {
-          # !! CAVEAT: In WinPS v3 and v4 only, *a partially quoted value that contains spaces*, such as `foo="bar none"`,
-          # !! causes the engine to still enclose the entire argument in "...", which cannot be helped.
-          # !! Only a space-less value that needs quoting ($mustDQuoteSpacelessArg) is handled correctly (which may never occur in practice).
-          # !! Calls to msiexec / msdeploy and cmdkey with values with spaces will therefore break and require --% in v3 and v4 - 
-          # !! we could blindly still try the partial quoting, as the call will break either way, but it's better to highlight PowerShell's built-in behavior.
-
-          # We reconstruct the expected partial quoing with *embedded* quoting, which both WinPS And PS Core pass through as-is.
-          $arg = '{0}{1}"{2}"' -f $Matches['key'], $Matches['sep'], $Matches['value']
-        }
-
-        # Write-Debug "after potential partial d-quoting: $arg"
-
-        # NOTE:
-        #  * msiexec (and presumably msdeploy too) only supports "" for "-escaping, so we must use "" for all arguments in this invocation, even if we would otherwise have used \"
-        #    (cmdkey.exe doesn't support embedded " at all.):
-        #    From the msiexec docs: " ... enclose the section with a *second pair of quotation marks*." - see https://docs.microsoft.com/en-us/windows/win32/msi/command-line-options
-        #  * Therefore, we must use ""-escaping, and apply it to *all* arguments - see additional processing pass with $placeholderChar below.
-        #  !! In Windows PowerShell we already default to ""-escaping to work around legacy bugs, but in PS Core we do *not*, given that not
-        #  !! all CLIs can be expected to support it, notably not those using the CommandLineToArgvW WinAPI function.
-        #  !! Given the high profile of msiexec.exe and msdeploy.exe, we *hard-code exceptions for it* here (cmdkey.exe needn't be considered, because it fundamentally doesn't support embedded ").
-        $useDoubledDQuotes = $useDoubledDQuotes -or ($exeBaseName -in 'msiexec', 'msdeploy' -and $ext -in $null, '.exe')
-
+      else {
+        $prefix = ''
       }
-      elseif ($mustDQuoteSpacelessArg) {
-        # For batch files, explicitly enclose in "..." those arguments that PowerShell would pass unquoted due to absence of whitespace
-        # *if they contain cmd.exe metachars.* Given that cmd.exe regrettably subjects batch-file arguments to its usual parsing even 
-        # when *not* calling from inside cmd.exe, unquoted arguments such as `a&b` would *break* the call, and something like `a"b` would break the argument partitioning.
-        # Note: * Leaving the argument unquoted and instead individually ^-escaping the cmd.exe metacharacters
-        #         is ultimately NOT the right solution, because the presence of such an argument breaks pass-through
-        #         invocations with %*, which is the most important scenario we want to support.
-        #       * Also, we do not perform this explicit quoting for calls *directly to cmd.exe*, as the reasonable assumption
-        #         there is that cmd.exe metacharacters then *should* have their usual, syntactic meaning (even though the problem
-        #         would only arise in awkwardly formatted commands such as (from PowerShell) `cmd /c 'ver|findstr' V`. Ultimately,
-        #         it seems that the point is moot, because - like PowerShell - `cmd.exe /c` seems to strip enclosing double quotes from
-        #         individual arguments before interpreting the space-concatenated list of stripped arguments like a submitted-from-inside-cmd.exe
-        #         command line.
+  
+      # Escape any embedded " first and
+      # *double \ instances before them*, because a verbatim `\"` sequence would otherwise be interpreted as an *escaped* "
+      # Note: We must must do this even when using ""-escaping on Windows, because Windows CLIs that accept ""-escaping *also* accept \"-escaping - even in a single argument.
+      $arg = $arg -replace '\\+(?=")', '$&$&' -replace '"', $escapedDQuote
 
-        # Wrap in *embedded* enclosing double quotes, which both WinPS and PS Core pass through as-is.
-        $arg = '"{0}"' -f $arg
+      # !! Problematic edge case we cannot fix, but it should happen very rarely:
+      # !!  * in WinPS
+      # !!  * if \"-escaping *must* be used - which should be rare; we now default to ""
+      # !! WinPS is broken with *verbatim* arguments such as `3" of snow` (from '3" of snow') and `foo="bar none"` (from 'foo="bar none"' - note that these " would be *data*, not syntax), 
+      # !! which it *doesn't* wrap in "..." if the embedded " are \"-escaped (or not escaped at all).
+      # !! The bug seems to be triggered by a non-initial " not preceded by a space.
+      # !! Unfortunately, we can NOT compensate for that, because trying to pass `"3\" of snow"` - with embedded
+      # !! outer quoting - then causes the engine to add *additional* outer "..." quoting, ultimately and invariably passing `""3\" of snow""`, which is broken 
+      # if (-not $IsCoreCLR -and -not $useDoubledDQuotes -and $hasSpaces -and $arg -match '^[^ "]+"') {
+      #   $arg = '"{0}"' -f $arg # !! DOES NOT WORK.
+      # }
 
-      }
+      # If double-quoting must be used, trailing '\'s must be doubled.
+      # so that `c:\program files` translates to `"c:\program files\\"` - without the doubling the trailing \" would be interpreted as an *escaped* "
+      # * If we end up applying the double-quoting explicitly ourselves, we must always perform this escaping explicitly.
+      # * Otherwise, if we rely on PowerShell to apply the double-quoting, this escaping happens *automatically* in *PS Core*, but must still be done *manually* in *WinPS*>
+      if ($mustManuallyDQuote -or (-not $IsCoreCLR -and $mustEndUpDQuoted)) { $arg = $arg -replace '\\+$', '$&$&' }
 
-      # In arguments that will end up "..."-enclosed, we must double *trailing* `\` instances so that `\"` isn't mistaken for an escaped `"`:
-      #  * If *we* provided the (partinal) enclosing "..." explicitly, due to either $mustDQuoteSpacelessArg or $mayRequirePartialDQuoting with spaces present (partial double-quoting).
-      #    * We must manually escape a trailing \, in both editions and on all platform.
-      #  * Otherwise, if PowerShell itself will provide the "..." enclosing due to the presence of spaces:
-      #    * In WinPS, we must manually escape a trailing \
-      #    * Not needed anymore in PowerShell Core, which does it automatically.
-      if ((-not $IsCoreCLR -and $hasSpaces) -or ($mustDQuoteSpacelessArg -or ($hasSpaces -and $mayRequirePartialDQuoting)) -and $origArg -match '\\$') {
-        $arg = $arg -replace '(\\)+("?)$', '$1$1$2'
-      }
+      # Write-Debug "after escaping: $arg"
+      
+      # Apply explicit double-quoting, if necessay, and prepend the prefix, if partial quoting was applied.
+      $arg = $prefix + $(if ($mustManuallyDQuote) { '"{0}"' -f $arg } else { $arg })
 
-      # Write-Debug "final before dquote escaping: $arg"
+      # Write-Debug "final: $arg" # !! PowerShell could still end up putting extra "..." around it on final process command line on Windows.
 
       $arg # output the escaped argument.
       
     }
-  }
-
-  if ($escapingHappened) {    
-    # It is only now that we definitively know whether to use \" or "" escaping,
-    # so we replace the $null char. we've used as a placeholder with the appropriate
-    # sequence now.
-    $DQuoteEscapeSequence = ('\"', '""')[$useDoubledDQuotes]
-    [array] $escapedArgs = foreach ($arg in $escapedArgs) {
-      # If \" escaping is or must be used:
-      #  * In PS Core, use of `\"` is always safe, because its use triggers enclosing double-quoting (if spaces are also present).
-      #  * !! In WinPS, sadly, that isn't true, so in the rare case that we *must* use \" on Windows, we have an edge cases we cannot handle - see above.
-      # If "" escaping is used:
-      #  * Works fine in both editions *if spaces are present* (enclosing double-quoting *is* triggered)
-      #  * Otherwise, explicit enclosure is required - see below.
-      $arg -replace $placeholderChar, $DQuoteEscapeSequence
-
-      # Write-Debug "final: $arg"
-
-    }
-    
   }
 
   # Finally, invoke the executable with the properly escaped arguments, if any, possibly with pipeline input.  

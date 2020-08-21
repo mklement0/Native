@@ -2,8 +2,11 @@
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.0.10** (2020-08-21):
+  * [dev] Improved tests, streamlined implementation.
+
 * **v1.0.9** (2020-08-20):
-  * [enhancement] For robustness, on PowerShell Core `""`-escaping is now only switched to in the presence of `msiexec`-style arguments if `msiexec` and `msdeploy` are being invoked; on Windows PowerShell, `""`-escaping remains the default to favor working around legacy bugs over CLIs that don't support `""`-escaping; see the note about the limitations of escaping of verbatim `"` chars. in the read-me's Known Limitations section.
+  * [enhancement] For robustness, on PowerShell Core, `""`-escaping of embedded `"` chars. is now only switched to in the presence of `msiexec`-style arguments if `msiexec` and `msdeploy` are being invoked (`cmdkey` doesn't support embedding `"` at all); on Windows PowerShell, `""`-escaping remains the default to favor working around legacy bugs over CLIs that don't support `""`-escaping; see the note about the limitations of escaping of verbatim `"` chars. in the read-me's Known Limitations section.
 
 * **v1.0.8** (2020-08-17):
   * [enhancement] The executable name given is now only looked for as an external executable (command type `Application`), even if other command forms with the same name are present; fixes #3
