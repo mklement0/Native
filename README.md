@@ -11,7 +11,7 @@ To **install** it for the current user, run `Install-Module Native -Scope Curren
 * [`ins` (`Invoke-NativeShell`)](#ins-invoke-nativeshell) presents a **unified interface to the platform-native shell**, allowing you to pass a command line either as as an argument - a single string - or via the pipeline
   * e.g., `ins 'ver & whoami'` on Windows, `ins 'ls / | cat -n'` on Unix.
 
-* [`ie` (short for: **I**nvoke (external) **E**xecutable)](#ie-short-for-invoke-external-executable) allows you to **pass arguments to external programs robustly**, to compensate for PowerShell's broken behavior.
+* [`ie` (short for: **I**nvoke (external) **E**xecutable)](#ie-short-for-invoke-external-executable) allows you to **pass arguments to external programs robustly**, to compensate for PowerShell's broken behavior as of v7.0.
   * e.g., `'a"b' | ie findstr 'a"b'` on Windows, `'a"b' | ie grep 'a"b'` on Unix.
 
 * [`dbea` (`Debug-ExecutableArguments`)](#dbea-debug-executablearguments) is a **diagnostic command** for understanding and **troubleshooting how PowerShell passes arguments to external executables**.
