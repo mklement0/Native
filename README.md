@@ -50,7 +50,7 @@ Once the ability for user code to _set_ `$?` [gets implemented](https://github.c
     * An exception is made for the high-profile `msiexec.exe` and `msdeploy.exe` CLIs, which support `""`-escaping only.
     * Should there be other CLIs that also support `""`-escaping only, direct invocation and use of `--%`, the [stop-parsing symbol operator](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Parsing) is required to pass arguments with embedded `"` chars. to them.
   * In _Windows PowerShell_, `""` is used by default, to work around legacy bugs.
-    * An exception is made for the following CLIs, which are known to accept `\"`-escaping only: PowerShell's own CLI (both editions), `ruby`, and `perl`.
+    * An exception is made for the following CLIs, which are known to accept `\"`-escaping only: PowerShell's own CLIs (`pwsh` and `powershell`), `ruby`, `perl`, and `Rscript`.
     * CLIs that use the [`CommandLineToArgvW`](https://docs.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-getcommandlinew) Windows API function rather than the C/C++ runtime to parse their command lines do _not_ support `""`-escaping. Direct invocation and use of `--%` is required to pass arguments with embedded `"` chars. to them.
 
 ## Command Descriptions

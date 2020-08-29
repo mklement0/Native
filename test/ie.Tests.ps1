@@ -20,9 +20,13 @@ Describe 'ie tests' {
 
     It 'Only permits calls to external executables' {
 
+      # Note: `whoami` exists on both Windows and Unix-like platforms.
       { ie whoami } | Should -Not -Throw
+      # An *alias* of an external executable is allowed too.
+      # Note: `-Scope Script` is required here for the test to see the alias.
+      { set-alias -Scope Script exealias whoami; ie exealias } | Should -Not -Throw
       
-      # No other command forms should be accepted: no aliases, functions, cmdlets.
+      # No other command forms should be accepted: aliases of non-executables, functions, cmdlets.
       { ie select } | Should -Throw -ErrorId ApplicationNotFoundException
       { ie cd.. } | Should -Throw -ErrorId ApplicationNotFoundException
       { ie Get-Date } | Should -Throw -ErrorId ApplicationNotFoundException
@@ -42,9 +46,10 @@ Describe 'ie tests' {
   
     It 'Properly passes scripts with complex quoting to various interpreters (if installed)' {
       $ohtCmds = [ordered] @{
-        # CLIs that require \" and are escaped that way in both editions.
+        # CLIs that require \" and must be escaped that way in WinPS too.
         ruby       = { ie ruby -e 'puts "hi there"' }
         perl       = { ie perl -E 'say "hi there"' }
+        Rscript    = { ie Rscript -e 'print("hi there")' }
         pwsh       = { ie pwsh -noprofile -c '"hi there"' }
         powershell = { ie powershell -noprofile -c '"hi there"' }
   
@@ -56,7 +61,8 @@ Describe 'ie tests' {
       foreach ($exe in $ohtCmds.Keys) {
         if (Get-Command -ea Ignore -Type Application $exe) {
           "Testing with $exe...." | Write-Verbose -vb
-          & $ohtCmds[$exe] | Should -BeExactly 'hi there'
+          $expected = if ($exe -eq 'Rscript') { '[1] "hi there"' } else { 'hi there' }
+          & $ohtCmds[$exe] | Should -BeExactly $expected
         }
       } 
   
