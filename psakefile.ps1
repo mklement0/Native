@@ -236,7 +236,7 @@ task Version -alias ver -description 'Show or bump the module''s version number.
   if (-not $props.SkipPrompts) {
 
     # Prompt for what version-number component should be incremented.
-    $choices = 'Major', 'mInor', 'Patch', 'Retain', 'Abort'
+    $choices = 'Major', 'mInor', 'Patch', 'Keep', 'Abort'
     while ($True) {
   
       $ndx = read-HostChoice @"

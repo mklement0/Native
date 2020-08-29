@@ -4,7 +4,7 @@
 
 * **v1.1** (2020-08-29):
   * [enhancement] `ie` now also accepts and resolves *aliases* of external executables.
-  * [enhancement] `ie` now calls `Rscript.exe` with the required `\"`-escaping in Windows PowerShell (in PowerShell Core it always did).
+  * [enhancement] `ie` now also calls `Rscript.exe` with the required `\"`-escaping in Windows PowerShell (in PowerShell Core it always did).
 
 * **v1.0.10** (2020-08-21):
   * [dev] Improved tests, streamlined implementation.
