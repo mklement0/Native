@@ -662,7 +662,7 @@ workarounds; e.g.:
   if (-not $exe) {
     Throw (
       (New-Object System.Management.Automation.ErrorRecord (
-          [System.Management.Automation.ParameterBindingException] "Missing mandary parameter: Please specify the external executable to invoke.",
+          [System.Management.Automation.ParameterBindingException] "Missing mandatory parameter: Please specify the external executable to invoke.",
           'MissingMandatoryParameter',
           'InvalidArgument',
           $null
