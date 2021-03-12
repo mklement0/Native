@@ -53,6 +53,8 @@ Once the ability for user code to _set_ `$?` [gets implemented](https://github.c
     * An exception is made for the following CLIs, which are known to accept `\"`-escaping only: PowerShell's own CLIs (`pwsh` and `powershell`), `ruby`, `perl`, and `Rscript`.
     * CLIs that use the [`CommandLineToArgvW`](https://docs.microsoft.com/en-us/windows/win32/api/processenv/nf-processenv-getcommandlinew) Windows API function rather than the C/C++ runtime to parse their command lines do _not_ support `""`-escaping. Direct invocation and use of `--%` is required to pass arguments with embedded `"` chars. to them.
 
+* Because of the accommodation for `msiexec`-style CLIs, arguments starting with a space-less word followed by`=` (e.g., `a=b`) are passed to batch files with that word and the `=` _unquoted_, which means that if those batch files perform argument-parsing themselves (rather than passing arguments _through_ with `%*`), they see _two_ arguments (e.g. `a` and `b`). Use direct invocation with `--%` to work around this problem, if necessary.
+
 ## Command Descriptions
 
 ### `ins` (`Invoke-NativeShell`)

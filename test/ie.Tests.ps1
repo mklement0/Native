@@ -23,8 +23,8 @@ Describe 'ie tests' {
       # Note: `whoami` exists on both Windows and Unix-like platforms.
       { ie whoami } | Should -Not -Throw
       # An *alias* of an external executable is allowed too.
-      # Note: `-Scope Script` is required here for the test to see the alias.
-      { set-alias -Scope Script exealias whoami; ie exealias } | Should -Not -Throw
+      # Note: `-Scope Global` is required for `ie` to see the alias, due to being defined in a module.
+      { set-alias -Scope Global __exealias_$PID whoami; try { ie __exealias_$PID } finally { Remove-Alias __exealias_$PID } } | Should -Not -Throw
       
       # No other command forms should be accepted: aliases of non-executables, functions, cmdlets.
       { ie select } | Should -Throw -ErrorId ApplicationNotFoundException
@@ -75,12 +75,15 @@ Describe 'ie tests' {
   
       # cmd.exe metachars. (in addition to ") that must trigger "..." enclosure:
       #   & | < > ^ , ;
+      # Note: `=` too requires "..." enclosure in batch-file argument parsing, but it conflicts
+      #       with keeping the LHS of tokens such as `FOO=bar` *unquoted* to support misexec-style CLIs,
+      #       and we give precedence to the latter rule.
       $exeArgs =
-      'a"b', 'a&b', 'a|b', 'a<b', 'a>b', 'a^b', 'a,b', 'a;b', 'last'
+      'a"b', 'a&b', 'a|b', 'a<b', 'a>b', 'a^b', 'a,b', 'a;b', 'a=b', 'last'
 
-      # Note: Batch file always echo arguments exactly as quoted.
+      # Note: Batch files always echo arguments exactly as quoted.
       $expected =
-      '"a""b"', '"a&b"', '"a|b"', '"a<b"', '"a>b"', '"a^b"', '"a,b"', '"a;b"', 'last' 
+      '"a""b"', '"a&b"', '"a|b"', '"a<b"', '"a>b"', '"a^b"', '"a,b"', '"a;b"', 'a', 'b', 'last' 
   
       -split (dbea -UseIe -UseBatchFile -Raw -- $exeArgs) | Should -BeExactly $expected
   

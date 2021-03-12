@@ -2,6 +2,9 @@
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.1.1** (2021-03-12):
+  * [doc] Clarification re passing arguments that start with a spaceless word followed by `=` (e.g. `a=b`) to batch files.
+
 * **v1.1** (2020-08-29):
   * [enhancement] `ie` now also accepts and resolves *aliases* of external executables.
   * [enhancement] `ie` now also calls `Rscript.exe` with the required `\"`-escaping in Windows PowerShell (in PowerShell Core it always did).

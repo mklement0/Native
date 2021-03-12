@@ -583,7 +583,12 @@ The specifics of accommodating batch-file calls are as follows:
   (whereas PowerShell by default only encloses arguments *with spaces* in
   double quotes); e.g., a verbatim argument seen by PowerShell as `a&b` is
   placed as `"a&b"` on the command line passed to a batch file.
-
+* CAVEAT: An argument that starts with a space-less word followed by `=`, 
+  e.g. `a=b`, is always passed with that word and the `=` *unquoted*, as part
+  of the accommodations for msiexec-style CLIs (see below). While this doesn't
+  affect argument pass-through with `%*`, intra-batch-file parsing of arguments
+  results in such a token being broken into *two* arguments, `a` and `b`.
+  
 The specifics of accommodating high-profile CLIs such as msiexec.exe /
 msdeploy.exe and cmdkey.exe are as follows:
 
@@ -676,10 +681,11 @@ workarounds; e.g.:
   #    we cannot, given that this simple function is based on the array of positional arguments, $args. 
   #    While @args has built-in magic for passing even *named* arguments through,
   #    we need to split $args into executable name and remaining arguments here, and the magic doesn't work with custom arrays.
-  # Note: We explicitly look for (aliases of) external executables only, bypassing other 
-  #       command forms that would normally have higher precedence, namely
-  #       namely functions and cmdlets.
-  #       !! Using -CommandType implies -All, so we must limit the results to the *first* command found.
+  #  *  We explicitly look for (aliases of) external executables only, bypassing other 
+  #     command forms that would normally have higher precedence, namely
+  #     namely functions and cmdlets.
+  #     !! Using -CommandType implies -All, so we must limit the results to the *first* command found.
+  #     !! Due to this function being defined in a *module*, only aliases defined in the *global* scope are recognized.
   $app = Get-Command -ErrorAction Ignore -CommandType Alias, Application $exe | Select-Object -First 1
   if ($app -and $app.CommandType -eq 'Alias') { $app = $app.ResolvedCommand }
   if (-not $app -or $app.CommandType -ne 'Application') {
@@ -791,12 +797,17 @@ workarounds; e.g.:
       $hasSpaces = $arg.Contains(' ')
       # Determine if *explicit* double-quoting must be used, as a *workaround*:
       #  * On Unix:
-      #     * Never: letting PowerShell automatically put the enclosing "..." around arguments with spaces on the pseudo-commad line assigned to ProcessStartInfo.Arguments is sufficient.
+      #     * Never: letting PowerShell automatically put the enclosing "..." around arguments *with spaces* on the pseudo-commad line assigned to ProcessStartInfo.Arguments is sufficient.
       #  * On Windows:
-      #     * if ""-escaping is used and a (space-less) argument contains "
-      #     * additionally, if a batch file is called and the argument contains cmd.exe metacharacters such as "&"
+      #     * If ""-escaping is used and a space-less argument contains "
+      #     * If a space-less argument is passed to a batch file and the argument contains cmd.exe metacharacters such as "&"
+      #       !! "=" ALSO belongs on the list of metacharacters, because in batch-file parsing - but not in pass-through with %* -
+      #       !! it separates arguments, just like "," and ";". However, enclosing tokens such as `FOO=bar` in double quotes
+      #       !! CONFLICTS with the MSI-style exceptions for NOT double-quoting the `FOO=` part of such arguments.
+      #       !! We're faced with the choice between passing `FOO=bar`, which makes misexec-style exes happy vs. `"FOO=bar"`, which
+      #       !! makes batch-file argument-parsing happy. We give precdence to the FORMER; fortunately, argument *pass-through* with %* isn't affected.
       #     * Potentially (determined below), if *partial* double-quoting is needed (e.g., `FOO="bar none"`)
-      $mustManuallyDQuote = $IsWindows -and -not $hasSpaces -and (($useDoubledDQuotes -and $hasDQuotes) -or ($isBatchFile -and $arg -match '[&|<>^,;]'))
+      $mustManuallyDQuote = $IsWindows -and -not $hasSpaces -and (($useDoubledDQuotes -and $hasDQuotes) -or ($isBatchFile -and $arg -match '[&|<>^,;]')) # !! see comment re "=" above
       # Determine if the argument must *end up* with double-quoting on the process command line on Windows, 
       # whether applied as a workaround explicitly by us, or whether triggered by PowerShell due to embedded spaces.
       $mustEndUpDQuoted = $hasSpaces -or $mustManuallyDQuote

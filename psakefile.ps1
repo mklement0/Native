@@ -201,7 +201,7 @@ which will REPLACE the existing folder's content, if present.
 Proceed?
 "@
 
-  copy-forPublishing -DestinationPath $targetPath
+  copy-forPublishing -DestinationPath $targetPath -Local
 
 }
 
@@ -551,7 +551,8 @@ function get-NuGetApiKey {
 function copy-forPublishing {
   param(
     [Parameter(Mandatory)]
-    [string] $DestinationPath
+    [string] $DestinationPath,
+    [switch]$Local
   )
 
   # Create the target folder or, if it already exists, remove its *contents*.
@@ -561,8 +562,10 @@ function copy-forPublishing {
     New-Item -ItemType Directory -Path $DestinationPath
   }
 
-  # Copy this folder's contents recursively, but exclude the .git subfolder, the .gitignore file, and the psakefile.
-  Copy-Item -Recurse -Path "$($PSScriptRoot)/*" -Destination $DestinationPath -Exclude '.git', '.gitignore', 'psakefile.ps1'
+  # Copy this folder's contents recursively, but exclude the development-only files and folders:
+  #  * ALWAYS the .git subfolder, the .gitignore file
+  #  * psakefile.ps1 and the test subfolder UNLESS publishing *locally*, so we can run easily run the tests on other platforms.
+  Copy-Item -Recurse -Path "$($PSScriptRoot)/*" -Destination $DestinationPath -Exclude ('.git', '.gitignore' + $(if (-not $Local) { 'psakefile.ps1', 'test' }))
   
   Write-Verbose -Verbose "'$PSScriptRoot' copied to '$DestinationPath'"
   
