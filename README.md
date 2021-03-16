@@ -55,6 +55,13 @@ Once the ability for user code to _set_ `$?` [gets implemented](https://github.c
 
 * Because of the accommodation for `msiexec`-style CLIs, arguments starting with a space-less word followed by`=` (e.g., `a=b`) are passed to batch files with that word and the `=` _unquoted_, which means that if those batch files perform argument-parsing themselves (rather than passing arguments _through_ with `%*`), they see _two_ arguments (e.g. `a` and `b`). Use direct invocation with `--%` to work around this problem, if necessary.
 
+* Note: Calling `cmd.exe` directly with a command line passed as a _single argument_ (which is the only _robust_ way) to either `cmd /c` or `cmd /k` - e.g., `ie cmd /c 'dir "C:\Program Files"'` - is supported,
+  but you don't actually need `ie` / `iee` for that, because PowerShell's lack of escaping of embedded double quotes is in this case canceled out by `cmd.exe` not expecting such escaping.
+  However, as a courtesy, `ie` / `iee` makes a _multi_-argument command line more robust by transforming it into a single-argument one behind the scenes, so that something like  
+  `ie cmd.exe /c "c:\program files\powershell\7\pwsh" -noprofile -c "'hi   there'"` works too, not just the single-argument form  
+  `ie cmd.exe /c '"c:\program files\powershell\7\pwsh" -noprofile -c "''hi   there''"'`
+
+
 ## Command Descriptions
 
 ### `ins` (`Invoke-NativeShell`)

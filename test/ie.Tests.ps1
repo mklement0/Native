@@ -24,7 +24,8 @@ Describe 'ie tests' {
       { ie whoami } | Should -Not -Throw
       # An *alias* of an external executable is allowed too.
       # Note: `-Scope Global` is required for `ie` to see the alias, due to being defined in a module.
-      { set-alias -Scope Global __exealias_$PID whoami; try { ie __exealias_$PID } finally { Remove-Alias __exealias_$PID } } | Should -Not -Throw
+      #       !! For WinPS compatibility, do NOT use Remove-Alias to clean up the alias, use RemoveItem Alias: instead.
+      { Set-Alias -Scope Global __exealias_$PID whoami; try { ie __exealias_$PID } finally { Remove-Item "Alias:__exealias_$PID" } } | Should -Not -Throw
       
       # No other command forms should be accepted: aliases of non-executables, functions, cmdlets.
       { ie select } | Should -Throw -ErrorId ApplicationNotFoundException
@@ -94,12 +95,13 @@ Describe 'ie tests' {
       # Arguments of the following form must be placed with *partial double-quoting*,
       # *around the value only* on the command line (e.g., `foo="bar none"`):
       $argsToPartiallyQuote = if ($PSVersionTable.PSVersion.Major -le 4) {
-          # !! CAVEAT: In WinPS v3 and v4 only, *a partially quoted value that contains spaces*, such as `foo="bar none"`,
-          # !! causes the engine to still enclose the entire argument in "...", which cannot be helped.
-          # !! Only a space-less value that needs quoting is handled correctly (which may never occur in practice).
-          Write-Warning "Partial quoting of msiexec-style arguments with spaces not supported in v3 and v4, skipping test."
-          'foo=bar"none'
-      } else {
+        # !! CAVEAT: In WinPS v3 and v4 only, *a partially quoted value that contains spaces*, such as `foo="bar none"`,
+        # !! causes the engine to still enclose the entire argument in "...", which cannot be helped.
+        # !! Only a space-less value that needs quoting is handled correctly (which may never occur in practice).
+        Write-Warning "Partial quoting of msiexec-style arguments with spaces not supported in v3 and v4, skipping test."
+        'foo=bar"none'
+      }
+      else {
         # !! In PS Core, verbatim `foo=bar"none` would only become `'foo="bar""none"` if the executable were msiexec.exe, msdeploy.exe, or cmdkey.exe; 
         # !! otherwise - as in these tests - \"-escaping kicks in and `foo=bar"none` becomes `foo=bar\"none` instead - without syntactic double-quoting around the value.
         'foo=bar none', '/foo:bar none', '-foo:bar none', 'foo=bar "stuff" none' + ('foo=bar"none', @())[$IsCoreCLR]
@@ -128,8 +130,43 @@ Describe 'ie tests' {
         $rawCmdLine | Should -BeExactly $expectedRawCmdLine
   
       }  
-  
+
+      
     }  
+    
+    It 'Handles a single-argument command-line cmd.exe /c call correctly.' {
+  
+      $expected = '1970-01-01T00:00:00'
+      $psCli = Join-Path $PSHOME ('powershell.exe', 'pwsh.exe')[$IsCoreCLR]
+
+      # Command line passed as single argument.
+      ie cmd.exe /c "`"$psCli`" -noprofile -c `"Get-Date '1970-01-01' -Format s`"" | Should -BeExactly $expected
+  
+    }
+
+    It 'Handles a multi-argument command-line cmd.exe /c call correctly.' {
+  
+      $expected = '1970-01-01T00:00:00'
+      $psCli = Join-Path $PSHOME ('powershell.exe', 'pwsh.exe')[$IsCoreCLR]
+
+      # Command line passed as multiple arguments.
+      if ($IsCoreCLR) {  
+        # PS Core:
+        # Ends up invoking something like (note the blind overall "..." enclosure):
+        #   cmd /c ""C:\Program Files\PowerShell\7\pwsh.exe" -noprofile -c "Get-Date ""1970-01-01"" -Format s""
+        ie cmd.exe /c $psCli -noprofile -c 'Get-Date "1970-01-01" -Format s' | Should -BeExactly $expected
+      }
+      else {
+        # WinPS:
+        # !! Because invoking `cmd.exe` triggers escaping of " as "",
+        # !! WinPS, which only understands \", would fail with the above command - unlike PS Core. 
+        # !! Therefore we simply avoid embedded " on WinPS.
+        # Ends up invoking something like (note the blind overall "..." enclosure):
+        #   cmd /c "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -noprofile -c "Get-Date '1970-01-01' -Format s""
+        ie cmd.exe /c $psCli -noprofile -c 'Get-Date ''1970-01-01'' -Format s' | Should -BeExactly $expected
+      }
+  
+    }
 
   }
 

@@ -49,7 +49,7 @@ Executes a native shell command line. Aliased to: ins
 
 .DESCRIPTION
 Executes a command line or ad-hoc script using the platform-native shell,
-on Unix optionally with pass-through arguments.
+optionally with pass-through arguments.
 
 If no argument and no pipeline input is given, an interactive shell is entered.
 Otherwise, pass a *single string* comprising one more commands for the native
@@ -138,7 +138,7 @@ IMPORTANT:
   look like `-foo:bar` or `-foo.bar`, e.g. `'foo,bar'` instead of `foo,bar`.
 
 .PARAMETER UseSh
-Supported on Unix-like platforms only (ignored on Windows); aliased to -sh.
+Supported on Unix-like platforms only (ignored on Windows); aliased to -sh:
 
 Uses /bin/sh rather than /bin/bash for execution.
 
@@ -239,7 +239,7 @@ complex quoting to Bash.
 
 * By definition, calls to this function are *platform-specific*.
   To perform platform-agnostic calls to a single external executable, use the
-  'ie' function that comes with this module.
+  `ie` function that comes with this module.
 
 * On Unix-like platforms, /bin/bash is used by default, due to its ubiquity.
   If you want to use the official system default shell, /bin/sh, instead, use 
@@ -481,9 +481,9 @@ script-terminating error) if failure is signaled, you can call the related
 but it is never necessary on Unix platforms, and should generally not be 
 necessary on Windows, because this function automatically handles special
 quoting needs of batch files and, in PowerShell v5.1 and above, of
-high-profile CLIs such as msiexec.exe, msdeploy.exe, and cmdkey.exe - see the
-NOTES section. In the rare event that you do need --%, use it with direct 
-invocation, as usual, or invoke via ins (Invoke-NativeShell).
+high-profile CLIs such as msiexec.exe, msdeploy.exe, and cmdkey.exe - 
+see the NOTES section. In the rare event that you do need --%, use it with
+direct invocation, as usual, or invoke via ins (Invoke-NativeShell).
 
 * -- as an argument is invariably removed by PowerShell on invocation, for
   technical reasons. If you need to pass -- through to the executable, use
@@ -524,9 +524,9 @@ from an elevated session:
 
     choco install echoargs -y 
 
-However, the dbea (Debug-NativeExecutable) command that comes with the same module
-as this function provides the same functionality, and the equivalent invocation
-would be:
+However, the dbea (Debug-NativeExecutable) command that comes with the same 
+module as this function provides the same functionality, and the equivalent
+invocation would be:
 
 dbea -ie -- '' 'a&b' '3" of snow' 'Nat "King" Cole' 'c:\temp 1\' 'a \" b'  'a"b'
 
@@ -570,7 +570,7 @@ Should the underlying problem ever be fixed in PowerShell itself, this
 function will no longer apply its workarounds and will effectively act like 
 '&', the call operator. See the NOTES section for a link to more information.
 
-This function is intentially designed to be a minimalist stopgap that
+This function is intentionally designed to be a minimalist stopgap that
 should be unobtrusive and simple to use. It is therefore implemented as 
 a *simple* function and does *not* support common parameters (just like
 you can't use common parameters with direct invocation).
@@ -588,7 +588,15 @@ The specifics of accommodating batch-file calls are as follows:
   of the accommodations for msiexec-style CLIs (see below). While this doesn't
   affect argument pass-through with `%*`, intra-batch-file parsing of arguments
   results in such a token being broken into *two* arguments, `a` and `b`.
-  
+
+NOTE: Calling cmd.exe directly with a command line passed as a single argument
+      - e.g. `ie cmd /c 'dir "C:\Program Files"'` - is supported,
+      but you don't actually need this function for that, because PowerShell's 
+      lack of escaping of embedded double quotes is in this case canceled out 
+      by cmd.exe not expecting such escaping. Additionally, as a courtesy, this
+      function transforms a multi-argument command line into a single-argument
+      one for increased robustness.
+
 The specifics of accommodating high-profile CLIs such as msiexec.exe /
 msdeploy.exe and cmdkey.exe are as follows:
 
@@ -757,6 +765,46 @@ workarounds; e.g.:
     #       in the hopes that the bug will get fixed and that direct execution will then exhibit the same behavior.
     $argsForExe
   
+  }
+  elseif ($isCmdExe) {
+    # -- Special handling for cmd.exe
+    # Find the index of either the /c or the /k switch, whichever comes first:
+    $cmdLineArgOptionNdx = [Array]::FindIndex($argsForExe, [Predicate[string]] { $args[0] -in '/c', '/k' })
+    if ($cmdLineArgOptionNdx -eq -1) {
+      # By definition, there's no command to pass to cmd.exe for execution, as cmd.exe ignores any unrecognized tokens unless 
+      # they follow /c or /k - irrespective of whether they look like options (e.g. `/uga`) or operands (e.g., `foo`).
+      # We're either dealing with a valid invocation that uses only options to control the interactive sessions (e.g. `cmd /v`)
+      # or a broken invocation.
+      # Either way, there's nothing to escape, so pass all arguments through without escaping.
+      $argsForExe
+    }
+    else {
+      # The assumption is that anything preceding /c or /k is only other switches, which also need
+      # no escaping (anything else would be a broken cmd.exe invocation anyway.)
+      $argsForExe[0..$cmdLineArgOptionNdx]
+      # The remaining arguments by definition make up the command line to pass to cmd.exe.
+      # Note that the only way to *robustly* pass such a command line is *as a single argument* enclosed in `"..."` overall.
+      # Passing a single argument requires NO escaping, because PowerShell's lack of escaping of embedded double-quotes is 
+      # in this case canceled out by cmd.exe not expecting such escaping(!)
+      # In short: 
+      #   * There is no need to use `ie` for passing a *single-argument* command-line to cmd /c or cmd /k. 
+      #   * However, at least we don't want to break if `ie` is used, and as a courtesy we make passing *multi-argument* command lines more robust.
+      if ($cmdLineArgOptionNdx -le $argsForExe.Count - 2) {
+        if ($cmdLineArgOptionNdx -eq $argsForExe.Count - 2) {
+          # *single-argument* command line, pass it through - rely on PowerShell's broken argument-passing.
+          $argsForExe[-1]
+        }
+        else {
+          # *multi*-argument command line.
+          # As a courtesy, we transform these multiple arugments into a *single*-argument command line, by 
+          # space-joining them, which requires double-quoting them individually on demand, as for batch files.
+          # PowerShell's broken argument-passing will blindly enclose this in `"..."` overall - which is what cmd.exe expects.
+          # CAVEAT: Embedded " in individual arguments are ""-escaped to be batch file-friendly, 
+          #         but this which can break CLIs that only understand \" - such as WinPS (but fortunately no longer PS Core).
+          $argsForExe[($cmdLineArgOptionNdx + 1)..($argsForExe.Count - 1)].ForEach( { ($_, "`"$_`"")[$_ -match '[&|<>^,; "]'] -replace '(?<=.)"(?!$)', '""' }) -join ' '
+        }
+      }
+    }
   }
   else {
     # Escape all arguments properly to pass them through as seen verbatim by PowerShell.

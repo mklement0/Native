@@ -2,6 +2,9 @@
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.2** (2021-03-15):
+  * [enhancement] Support for calling `cmd.exe` directly with a command line, via `/c` or `/k` - though note that with a single-argument pass-through command line `ie` / `iee` aren't strictly needed.
+
 * **v1.1.1** (2021-03-12):
   * [doc] Clarification re passing arguments that start with a spaceless word followed by `=` (e.g. `a=b`) to batch files.
 
