@@ -2,6 +2,9 @@
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.2.1** (2021-03-16):
+  * [fix] `cmd /c` / `cmd /k` now function correctly with the command line passed as _multiple_ arguments.
+
 * **v1.2** (2021-03-15):
   * [enhancement] Support for calling `cmd.exe` directly with a command line, via `/c` or `/k` - though note that with a single-argument pass-through command line `ie` / `iee` aren't strictly needed.
 

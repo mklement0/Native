@@ -134,36 +134,42 @@ Describe 'ie tests' {
       
     }  
     
-    It 'Handles a single-argument command-line cmd.exe /c call correctly.' {
+    It 'Handles a *single-argument* command-line cmd.exe /c call correctly.' {
   
-      $expected = '1970-01-01T00:00:00'
-      $psCli = Join-Path $PSHOME ('powershell.exe', 'pwsh.exe')[$IsCoreCLR]
+      $expected = 'Ready to move on [Y,N]?Y'
+      $choicePath = (Get-Command -ea Stop choice.exe).Source
 
-      # Command line passed as single argument.
-      ie cmd.exe /c "`"$psCli`" -noprofile -c `"Get-Date '1970-01-01' -Format s`"" | Should -BeExactly $expected
+      # Command line passed as single argument with embedded quoting.
+      ie cmd.exe /c (' "{0}" /d Y /t 0 /m "Ready to move on" ' -f $choicePath) | Should -BeExactly $expected
   
     }
 
-    It 'Handles a multi-argument command-line cmd.exe /c call correctly.' {
+    It 'Handles a *multi-argument* command-line cmd.exe /c call correctly.' {
   
-      $expected = '1970-01-01T00:00:00'
-      $psCli = Join-Path $PSHOME ('powershell.exe', 'pwsh.exe')[$IsCoreCLR]
+      $expected = 'Ready to move on [Y,N]?Y'
+      $choicePath = (Get-Command -ea Stop choice.exe).Source
 
-      # Command line passed as multiple arguments.
-      if ($IsCoreCLR) {  
-        # PS Core:
-        # Ends up invoking something like (note the blind overall "..." enclosure):
-        #   cmd /c ""C:\Program Files\PowerShell\7\pwsh.exe" -noprofile -c "Get-Date ""1970-01-01"" -Format s""
-        ie cmd.exe /c $psCli -noprofile -c 'Get-Date "1970-01-01" -Format s' | Should -BeExactly $expected
+      # We want to use an executable path *with spaces*, so that PowerShell
+      # "..."-encloses it, as that is the real test for whether `ie` correctly
+      # merges the multiple arguments into a single one.
+      # (Without this merging, cmd.exe would see a double-quoted *first* argument, followed by *another* double-quoted argument, which breaks syntactially.)
+      if ($IsCoreCLR)  {
+        # Note: This requires the opt-in to NOT require elevation for creating symlinks.
+        $tmpSymlinkWithSpaces = (New-Item -ea Stop "temp:/dir with spaces $PID" -Type SymbolicLink -Value (Split-Path $choicePath)).FullName
+        $choicePath = Join-Path $tmpSymlinkWithSpaces (Split-Path -Leaf $choicePath)
       }
       else {
-        # WinPS:
-        # !! Because invoking `cmd.exe` triggers escaping of " as "",
-        # !! WinPS, which only understands \", would fail with the above command - unlike PS Core. 
-        # !! Therefore we simply avoid embedded " on WinPS.
-        # Ends up invoking something like (note the blind overall "..." enclosure):
-        #   cmd /c "C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -noprofile -c "Get-Date '1970-01-01' -Format s""
-        ie cmd.exe /c $psCli -noprofile -c 'Get-Date ''1970-01-01'' -Format s' | Should -BeExactly $expected
+        # On WinPS, ELEVATION is required to create symlink, so we use the space-less path as-is.
+        # This should be fine, given that the tests *also* run in PS Core, and that the PowerShell
+        # part of the invocation should behave the same between editions.
+      }
+
+      # Similiar command line as above, but passed as multiple arguments,
+      # with the executable path containing spaces, if feasible.
+      ie cmd.exe /c $choicePath /d Y /t 0 /m "Ready to move on" | Should -BeExactly $expected
+
+      if ($IsCoreCLR)  {
+        Remove-Item -LiteralPath $tmpSymlinkWithSpaces
       }
   
     }

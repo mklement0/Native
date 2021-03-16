@@ -721,7 +721,10 @@ workarounds; e.g.:
 
   # Flatten the array of arguments, because we also want to support invocations such as `ie $someArray foo bar`, 
   # i.e. a mix of array-splatting and indiv. args.
-  $argsForExe = foreach ($potentialArrayArg in $argsForExe) { foreach ($arg in $potentialArrayArg) { $arg } }
+  # NOTE:
+  #  * We coerce to [string[]] up front, which applies PowerShell's usual culture-invariant string formatting for values such as `1.2`
+  #  * Since we're by definition calling *external programs*, everything is passed as a string anyway; note that [Array]::FindIndex requires a strongly typed index, for instance.
+  [string[]] $argsForExe = foreach ($potentialArrayArg in $argsForExe) { foreach ($arg in $potentialArrayArg) { $arg } }
 
   # Determine the base name and filename extension of the target executable, as we need to vary 
   # the quoting behavior based on it:
@@ -769,7 +772,9 @@ workarounds; e.g.:
   elseif ($isCmdExe) {
     # -- Special handling for cmd.exe
     # Find the index of either the /c or the /k switch, whichever comes first:
-    $cmdLineArgOptionNdx = [Array]::FindIndex($argsForExe, [Predicate[string]] { $args[0] -in '/c', '/k' })
+    # Note: The [string[]] cast ensures a strongly typed array, which is necessary for method overload resolution to find a suitable generic overload, 
+    #       Since we've type-constrained $argsForExe to [string[]] above, this isn't strictly necessary here, however.
+    $cmdLineArgOptionNdx = [Array]::FindIndex([string[]] $argsForExe, [Predicate[string]] { $args[0] -in '/c', '/k' })
     if ($cmdLineArgOptionNdx -eq -1) {
       # By definition, there's no command to pass to cmd.exe for execution, as cmd.exe ignores any unrecognized tokens unless 
       # they follow /c or /k - irrespective of whether they look like options (e.g. `/uga`) or operands (e.g., `foo`).
@@ -832,10 +837,6 @@ workarounds; e.g.:
     $escapedDQuote = ('\"', '""')[$useDoubledDQuotes]
     
     foreach ($arg in $argsForExe) {
-
-      if ($arg -isnot [string]) {
-        $arg = "$arg"  # Make sure that each argument is a string, so we can analyze the string representation with respect to quoting.
-      }
 
       if ('' -eq $arg) { '""'; continue } # Empty arguments must be passed as `'""'`(!), otherwise they are omitted.
       # Note: $null values - which we want to ignore - are seemingly automatically eliminated during splatting, which we use below.
