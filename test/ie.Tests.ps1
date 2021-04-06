@@ -16,7 +16,30 @@ Import-Module $manifest -Force -Global # -Global makes sure that when psake runs
 
 Describe 'ie tests' {
 
+  BeforeAll {
+
+    # Helper function for more helpfully showing failed test results, using
+    # line-by-line juxtaposition.
+    function assert-ExpectedResult ([string[]] $expected, [string[]] $actual) {
+      if ($diff = Compare-Object $expected $actual) {
+        # Produce line-by-line juxtaposition via Write-Host, to help with troubleshooting:
+        $maxNdx = [Math]::Max($expected.Count, $actual.Count) - 1
+        $(foreach ($ndx in 0..$maxNdx) {
+          '«{0}» vs. «{1}»' -f $expected[$ndx], $actual[$ndx]
+        }) | Write-Host -ForegroundColor Yellow
+        $diff.Count | Should -Be 0
+      }   
+    }
+    
+  }
+
   Context "PlatformNeutral" {
+
+    It 'Passes script-block-based PowerShell calls through as-is' {
+      ('pwsh', ('pwsh.exe', 'powershell.exe'))[$IsWindows].ForEach({
+        ie pwsh -noprofile -c { "[$args]" } -args one, two | Should -Be '[one two]'
+      })
+    }
 
     It 'Only permits calls to external executables' {
 
@@ -41,8 +64,8 @@ Describe 'ie tests' {
       $exeArgs = '', 'a&b', '3 " of snow', 'Nat "King" Cole', 'c:\temp 1\', 'a b\\', 'a \" b', 'a \"b c\" d', 'a"b', 'ab\'
   
       $result = dbea -Raw -UseIe -- $exeArgs
-  
-      Compare-Object $exeArgs $result | ForEach-Object { '{0} <{1}>' -f $_.SideIndicator, $_.InputObject } | Should -BeNull
+      assert-ExpectedResult $exeArgs $result
+
     }  
   
     It 'Properly passes scripts with complex quoting to various interpreters (if installed)' {
@@ -80,13 +103,15 @@ Describe 'ie tests' {
       #       with keeping the LHS of tokens such as `FOO=bar` *unquoted* to support misexec-style CLIs,
       #       and we give precedence to the latter rule.
       $exeArgs =
-      'a"b', 'a&b', 'a|b', 'a<b', 'a>b', 'a^b', 'a,b', 'a;b', 'a=b', 'last'
+      'a"b', 'a&b', 'a|b', 'a<b', 'a>b', 'a^b', 'a,b', 'a;b', 'a=b', 'the last one'
 
       # Note: Batch files always echo arguments exactly as quoted.
+      #       Note the - unavoidable - spltting of 'a=b' into 'a' and 'b'
       $expected =
-      '"a""b"', '"a&b"', '"a|b"', '"a<b"', '"a>b"', '"a^b"', '"a,b"', '"a;b"', 'a', 'b', 'last' 
+      '"a""b"', '"a&b"', '"a|b"', '"a<b"', '"a>b"', '"a^b"', '"a,b"', '"a;b"', 'a', 'b', '"the last one"' 
   
-      -split (dbea -UseIe -UseBatchFile -Raw -- $exeArgs) | Should -BeExactly $expected
+      $actual = (dbea -UseIe -UseBatchFile -Raw -- $exeArgs) -split '\r\n'
+      assert-ExpectedResult $expected $actual        
   
     }
 
@@ -172,6 +197,28 @@ Describe 'ie tests' {
         Remove-Item -LiteralPath $tmpSymlinkWithSpaces
       }
   
+    }
+
+    It 'Batch-file calls via "cmd /c call" for robust exit-code reporting work.' {
+
+      # For added testing:
+      #  * use a batch-file name with spaces
+      #  * pass escape-triggering dummy arguments.
+      $tempBatFile = Join-Path (Get-Item TestDrive:/).FullName 'tmp 1.cmd'
+      $dummyArgs = 'foo&bar', 'unrelated "stuff"'
+
+      # Create a temporary batch file that uses exit /b *without* an explicit
+      # exit code, which should pass the failing command's exit code (error level) through.
+      # This only happens when the batch file is called via `cmd /c call`
+      '@echo off & whoami -nosuch 2>NUL || exit /b' | Set-Content -LiteralPath $tempBatFile
+      
+      $output = ie cmd /c call $tempBatFile $dummyArgs 2>&1
+
+      Remove-Item $tempBatFile
+
+      $output | Should -BeNullOrEmpty
+      $LASTEXITCODE | Should -Be 1
+
     }
 
   }

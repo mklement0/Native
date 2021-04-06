@@ -724,6 +724,7 @@ workarounds; e.g.:
   # NOTE:
   #  * We coerce to [string[]] up front, which applies PowerShell's usual culture-invariant string formatting for values such as `1.2`
   #  * Since we're by definition calling *external programs*, everything is passed as a string anyway; note that [Array]::FindIndex requires a strongly typed index, for instance.
+  $orgExeArgs = $argsForExe # Also save the array of original arguments with their original types, in case the workaround is no longer needed or a script block-based PowerShell CLI invocation is being performed.
   [string[]] $argsForExe = foreach ($potentialArrayArg in $argsForExe) { foreach ($arg in $potentialArrayArg) { $arg } }
 
   # Determine the base name and filename extension of the target executable, as we need to vary 
@@ -749,7 +750,21 @@ workarounds; e.g.:
   #    !! BE SURE TO REFLECT CHANGES HERE IN THE .NOTES SECTION ABOVE.
   $supportsBackslashDQuoteOnly = -not $IsWindows -or (($exeBaseName -in 'perl', 'ruby', 'Rscript', 'powershell', 'pwsh' -and $ext -eq '.exe') -or ($ext -in '.pl', '.rb', '.r')) # Note: we needn't worry about '.ps1', because they are exeuted in-process.
 
-  # Construct the array of escaped arguments, if necessary.
+  # -- A NOTE ON SPECIAL HANDLING FOR BATCH FILES IN ORDER TO *SUPPORT PROPER EXIT-CODE REPORTING*:
+  #    We would LIKE to do this, but ultimately CANNOT, because the only way to ensure it is via `cmd /c call`
+  #    which INVARIABLY DOUBLES '^' characters in double-quoted arguments - see our SO answer at https://stackoverflow.com/a/55290133/45375
+  #    If we did this, we would make it impossible to pass something like "a ^ 2" to a batch file - it would see it as "a ^^ 2".
+  #    Unfortunately, this means that the user will have to use cmd /c call *explicitly* on demand, *if feasible* to get reliable exit-code reporting.
+  #    Our SO *question* at https://stackoverflow.com/a/55290133/45375 is looking for a solution, but I suspect there is none.
+  #    Here's the code that would transform a direct batch-file call into a `cmd /c call "<batch-file> ..."`-based one:
+  #       #  We apply the same transformation as with direct invocation of cmd /c or cmd /k - see comments above - !! PART OF THIS CODE IS DUPLICATED BELOW.
+  #       #  Hypothetical caveat: Since we must use ""-escaping when calling batch files: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), 
+  #       #                       this escaping could still break if the ultimate target executable only supports \"
+  #       #                       A least officially provided CLI entry points hopefully account for that (i.e., they hopefully only chose batch-file entry points if the code ultimately processing the arguments recognizes "" as an escaped ")
+  #       '/c', ((, 'call' + $exe + $argsForExe).ForEach( { ($_, "`"$_`"")[$_ -match '[&|<>^,; "]'] -replace '(?<=.)"(?!$)', '""' }) -join ' ')
+  #       $exe = "$env:SystemRoot\System32\cmd.exe"
+
+  # == Construct the array of escaped arguments, if necessary.
   # Note: We cannot use .ForEach('GetType'), because we must remain PSv3-compatible.
   [array] $escapedArgs = 
   if ($null -eq $argsForExe) {
@@ -758,15 +773,14 @@ workarounds; e.g.:
     #             getting the same no-arguments treatment in all PS versions.
     @()
   }
-  elseif (-not $script:needQuotingWorkaround -or ($isPsCli -and $(foreach ($el in $argsForExe) { if ($el -is [scriptblock]) { $true; break } }))) {
-  
-    # Use the array as-is if (a) the quoting workaround is no longer needed or (b) the engine itself will aply Base64-encoding behind the scenes
+  elseif (-not $script:needQuotingWorkaround -or ($isPsCli -and $orgExeArgs.ForEach('GetType') -contains [scriptblock])) {
+    # Use the arguments as-is if (a) the quoting workaround is no longer needed or (b) the engine itself will aply Base64-encoding behind the scenes
     # using the -encodedCommand CLI parameter.
     # Note: As of PowerShell Core 7.1.0-preview.5, the engine unexpectedly applies Base64-encoding in the presence of a [scriptblock] argument alone,
     #       irrespective of what executable is being invoked: see https://github.com/PowerShell/PowerShell/issues/4973
     #       In effect we're masking the bug by exhibiting more sensible behavior if the executable is NOT a PowerShell CLI (stringified script block, which may still not be the intent),
     #       in the hopes that the bug will get fixed and that direct execution will then exhibit the same behavior.
-    $argsForExe
+    $orgExeArgs
   
   }
   elseif ($isCmdExe) {
@@ -927,6 +941,11 @@ workarounds; e.g.:
       $arg # output the escaped argument.
       
     }
+  }
+
+  if ($DebugPreference -eq 'Continue') {
+      # See the verbatim arguments about to be passed.
+    , $exe + $escapedArgs | % { "«$_»" } | Write-Debug
   }
 
   # Finally, invoke the executable with the properly escaped arguments, if any, possibly with pipeline input.  
@@ -1188,7 +1207,7 @@ its re-creation on the next invocation.
     )
   }
 
-  # Communicate -Raw, i.e. the desire to print just the raw arguments recived -
+  # Communicate -Raw, i.e. the desire to print just the raw arguments received -
   # via an *environment variable* to the helper executable / scripts.
   if ($Raw) { $env:_dbea_raw = 1 }
 
@@ -1415,9 +1434,16 @@ static class ConsoleApp {
     }
     if ($IsCoreCLR) {
       # !! As of PowerShell Core 7.1.0-preview.5, -OutputType ConsoleApplication produces
-      # !! broken executables in PowerShel *Core* - see https://github.com/PowerShell/PowerShell/issues/13344
+      # !! broken executables in PowerShell *Core* - see https://github.com/PowerShell/PowerShell/issues/13344
       # !! The workaround is to delegate to Windows PowerShell.
-      iee powershell.exe -noprofile -c $sb -args $exePath
+      # Note: To simplify troubleshooting, we don't use `iee` here.
+      & {
+        $ErrorActionPreference = 'Continue'
+        $out = powershell.exe -noprofile -c $sb -args $exePath 2>&1
+      }
+      if (0 -ne $LASTEXITCODE) {
+        throw "FAILED TO CREATE HELPER EXECUTABLE '$exePath':`n$out"
+      }
     }
     else {
       # Windows PowerShell: execute the script block directly.

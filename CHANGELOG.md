@@ -2,6 +2,10 @@
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.2.2** (2021-04-06):
+  * [fix] Script block-based PowerShell CLI calls now function properly again.
+  * [doc] README updated with guidance for reliable batch-file exit-code reporting via `cmd /c call`
+
 * **v1.2.1** (2021-03-16):
   * [fix] `cmd /c` / `cmd /k` now function correctly with the command line passed as _multiple_ arguments.
 

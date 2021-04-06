@@ -16,6 +16,33 @@ Import-Module $manifest -Force -Global # -Global makes sure that when psake runs
 
 Describe 'dbea (Debug-ExecutableArguments) tests' {
 
+  BeforeAll {
+
+    if ($IsWindows) {
+      # Delete an existing cached helper *.exe to force its recreation, so the
+      # creation on demand can be tested too.
+      # (On Unix, we just use an ad-hoc script, not a cached external utility).
+      # NOTE: The GUID is a static copy of this module's GUID from the *.psd1 file.
+      if ($helperExe = Get-Item -ErrorAction Ignore "$env:TEMP\$($manifest.GUID)\dbea.exe") {
+        Remove-Item -LiteralPath $helperExe
+      }
+    }
+
+    # Helper function for more helpfully showing failed test results, using
+    # line-by-line juxtaposition.
+    function assert-ExpectedResult ([string[]] $expected, [string[]] $actual) {
+      if ($diff = Compare-Object $expected $actual) {
+        # Produce line-by-line juxtaposition via Write-Host, to help with troubleshooting:
+        $maxNdx = [Math]::Max($expected.Count, $actual.Count) - 1
+        $(foreach ($ndx in 0..$maxNdx) {
+          '«{0}» vs. «{1}»' -f $expected[$ndx], $actual[$ndx]
+        }) | Write-Host -ForegroundColor Yellow
+        $diff.Count | Should -Be 0
+      }   
+    }
+
+  }
+
   It 'Rejects incompatible switches' {
     { dbea -UseBatchFile -UseWrapperBatchFile } | Should -Throw -ExceptionType System.Management.Automation.ParameterBindingException
   }
@@ -41,45 +68,66 @@ Describe 'dbea (Debug-ExecutableArguments) tests' {
   }
 
   It 'Echoes the arguments as-is with -Raw' {
+
+    $argList = '-u', 'two (2)', 'three'
+
+    $result = dbea -Raw -- $argList
+    assert-ExpectedResult $argList $result
+
+  }
+
+  It 'Echoes the arguments as-is with -Raw and -UseBatchFile' -Skip:(-not $IsWindows) {
+
     $argList = '-u', 'two (2)', 'three'
     # To avoid breaking with arguments that contain cmd.exe metacharacters, the batch file must
     # echo arguments that were passed quoted *with* the quotes.
     $expectedBatchFileResult = '-u', '"two (2)"', 'three'
-    $sbFormatUnexpectedOutput = { '{0} <{1}>' -f $_.SideIndicator, $_.InputObject }
 
-    $result = dbea -Raw -- $argList
-    Compare-Object $argList $result | ForEach-Object $sbFormatUnexpectedOutput | Should -BeNull
+    $result = dbea -Raw -UseBatchFile -- $argList
+    assert-ExpectedResult $expectedBatchFileResult $result
 
-    if ($IsWindows) {
-      $result = dbea -Raw -UseWrapperBatchFile -- $argList
-      Compare-Object $argList $result | ForEach-Object $sbFormatUnexpectedOutput | Should -BeNull
+  }
 
-      $result = dbea -Raw -UseBatchFile -- $argList
-      Compare-Object $expectedBatchFileResult $result | ForEach-Object $sbFormatUnexpectedOutput | Should -BeNull
-    }
+  It 'Echoes the arguments as-is with -Raw and -UseWrapperBatchFile' -Skip:(-not $IsWindows) {
+
+    $argList = '-u', 'two (2)', 'three'
+
+    $result = dbea -Raw -UseWrapperBatchFile -- $argList
+    assert-ExpectedResult $argList $result
 
   }
 
   It 'Passes arguments properly with -UseIe' {
-    # Note: We use an option-like 1st argument to make
-    #       sure it is still correctly passed through and not mistakenly
-    #       interpreted as an option for /bin/sh.
+
+    # Note: We use an option-like 1st argument to also test the case where 
+    #       something that looks like an option isn't mistakenly interpreted
+    #       as such by /bin/sh on Unix.
+    $argList = '-u', '{ "foo": "bar" }'
+
+    $result = dbea -UseIe -Raw -- $argList
+    assert-ExpectedResult $argList $result
+  
+  }
+
+  It 'Passes arguments properly with -UseIe and -UseBatchFile' -Skip:(-not $IsWindows) {
+
     $argList = '-u', '{ "foo": "bar" }'
     # To avoid breaking with arguments that contain cmd.exe metacharacters, the batch file must
     # echo arguments that were passed quoted *with* the quotes.
     $expectedBatchFileResult = '-u', '"{ ""foo"": ""bar"" }"'
-    $sbFormatUnexpectedOutput = { '{0} <{1}>' -f $_.SideIndicator, $_.InputObject }
 
-    $result = dbea -UseIe -Raw -- $argList
-    Compare-Object $argList $result | ForEach-Object $sbFormatUnexpectedOutput | Should -BeNull
+    $result = dbea -UseIe -Raw -UseBatchFile -- $argList
+    assert-ExpectedResult $expectedBatchFileResult $result
 
-    if ($IsWindows) {      
-      $result = dbea -UseIe -Raw -UseWrapperBatchFile -- $argList
-      Compare-Object $argList $result | ForEach-Object $sbFormatUnexpectedOutput | Should -BeNull
+  }
 
-      $result = dbea -UseIe -Raw -UseBatchFile -- $argList
-      Compare-Object $expectedBatchFileResult $result | ForEach-Object $sbFormatUnexpectedOutput | Should -BeNull
-    }
+  It 'Passes arguments properly with -UseIe and -UseWrapperBatchFile' -Skip:(-not $IsWindows) {
+
+    $argList = '-u', '{ "foo": "bar" }'
+
+    $result = dbea -UseIe -Raw -UseWrapperBatchFile -- $argList
+    assert-ExpectedResult $argList $result
+
   }
 
 }

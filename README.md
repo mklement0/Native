@@ -61,6 +61,9 @@ Once the ability for user code to _set_ `$?` [gets implemented](https://github.c
   `ie cmd.exe /c "c:\program files\powershell\7\pwsh" -noprofile -c "'hi   there'"` works too, not just the single-argument form  
   `ie cmd.exe /c '"c:\program files\powershell\7\pwsh" -noprofile -c "''hi   there''"'`
 
+* Due to `cmd.exe` limitations, a batch file's exit code that isn't _explicitly set_ isn't seen by PowerShell - see [this StackOverflow answer](https://stackoverflow.com/a/66250528/45375) for background.
+For _reliable_ reporting of a batch file's exit code in `$LASTEXITCODE`, batch files must be called via `cmd /c call <batch-file> ...`. Unfortunately, this invariably doubles `^` characters in arguments, 
+which is why `ie` doesn't automatically use this invocation method behind the scenes. Therefore, **unless your arguments contain `^`, it is best to invoke batch files as `ie cmd /c call <batch-file> ...`**
 
 ## Command Descriptions
 
