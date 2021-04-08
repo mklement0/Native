@@ -42,6 +42,31 @@ Describe 'ins (Invoke-NativeShell) tests' {
       { ins -ErrorOnFailure $cmd } | Should -Throw -ErrorId NativeCommandFailed
     }
 
+    It 'Passing arguments to the -CommandLine string triggers a warning if the arguments aren''t referenced.' {
+      
+      # Commands that do not include argument (parameter) references.
+      $cmdsWarn = 'echo', 'echo 10%', 'echo 5$', 'echo $RANDOM'
+      # Commands that do.
+      $cmdsDontWarn = if ($IsWindows) {
+        'echo %*', 'echo %1', 'echo %~1', 'echo %~dp1'
+      } else {
+        'echo $*', 'echo ${*}', 'echo $@', 'echo ${@}', 'echo $1', 'echo ${1}'
+      }
+
+      $cmdsWarn | ForEach-Object {
+        $null = ins -WarningVariable warnings -- $_ foo 3>$null
+        if ($warnings.Count -eq 0) { Write-Verbose -vb "Command: $_"}
+        $warnings.Count | Should -Be 1
+      }
+
+      $cmdsDontWarn | ForEach-Object {
+        $null = ins -WarningVariable warnings -- $_ foo
+        if ($warnings.Count -ne 0) { Write-Verbose -vb "Command: $_"}
+        $warnings.Count | Should -Be 0
+      }
+
+    }
+
   }
 
   Context 'Windows' -Skip:(-not $IsWindows) {

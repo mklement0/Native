@@ -334,7 +334,7 @@ complex quoting to Bash.
   else {
     # A command line / ad-hoc script must be passed to the native shell.
 
-    # NOTE: For platform-specific reasons, we translate a code-via-stdin (pipeline) (`... | ins`)
+    # NOTE: For reasons that differ by platform, we translate a code-via-stdin (pipeline) (`... | ins`)
     #       invocation to a code-by-argument / code-by-temporary-batch-file invocation.
     if ($pipelineInputIsCommandLine) {
 
@@ -362,7 +362,20 @@ complex quoting to Bash.
       #     interactive prompts.
 
     }
-    
+
+    # As a courtesy, we make sure that if arguments are passed, the target
+    # commmand (ad-hoc script) actually contains references to those arguments,
+    # and warn otherwise, as that likely means that the user accidentally
+    # used `ins foo bar` when they meant to use `ins 'foo bar'`
+    if ($ArgumentList) {
+      # Note: These regexes aren't fool-proof (may yield false positives that result in no warning when there should be one), but should work well enough.
+      #       We could in theory limit the $\d / %\d matching to the number of arguments passed (e.g., not allow $3 if only 2 args. are passed), but that doesn't seem worth it.
+      $regex = if ($IsWindows) { '%\*|%\d|%~[^\d]*\d' } else { '\$\{?\*\}?|\$\{?@\}?|\$\{?\d\}?' }
+      if ($CommandLine -notmatch $regex) {
+        Write-Warning "You are passing arguments to the -CommandLine argument, but the latter doesn't reference them. Did you mean to make them part of the -CommandLine string? E.g. ``ins 'echo hi'`` rather than ``ins echo hi``"
+      }
+    }
+
     if ($IsWindows) {
       # On Windows, we use a temporary batch file to avoid re-quoting problems 
       # that would arise if the command line were passed to cmd /c as an *argument*.
@@ -393,11 +406,11 @@ complex quoting to Bash.
         #       behavior of cmd.exe on a pristine system:
         #       /d == no auto-run, /e:on == enable command extensions; /v:off == disable delayed variable expansion
         # IMPORTANT: Changes to this call must be replicated in the `else` branch below.
-        $input | & $invokingFunction $nativeShellExePath /d /e:on /v:off /c "$tmpBatchFile $ArgumentList & exit /b" # !! The '& exit' is for robust exit-code reporting - see https://stackoverflow.com/q/66975883/45375
+        $input | & $invokingFunction $nativeShellExePath /d /e:on /v:off /c "$tmpBatchFile $ArgumentList & exit" # !! The '& exit' is for robust exit-code reporting - see https://stackoverflow.com/q/66975883/45375
       } 
       else { 
         # IMPORTANT: Changes to this call must be replicated in the `if` branch above.
-        & $invokingFunction $nativeShellExePath /d /e:on /v:off /c "$tmpBatchFile $ArgumentList & exit /b" # !! See explanation for the `& exit ` part above.
+        & $invokingFunction $nativeShellExePath /d /e:on /v:off /c "$tmpBatchFile $ArgumentList & exit" # !! See explanation for the `& exit ` part above.
       }
 
       Remove-Item -ErrorAction Ignore -LiteralPath $tmpBatchFile
@@ -822,7 +835,7 @@ workarounds; e.g.:
     #       #                       this escaping could still break if the ultimate target executable only supports \"
     #       #                       A least officially provided CLI entry points hopefully account for that (i.e., they hopefully only chose batch-file entry points if the code ultimately processing the arguments recognizes "" as an escaped ")
     # !! PART OF THIS CODE MUST BE KEPT IN SYNC WITH WHAT'S ABOVE.
-    '/c', (((, $exe + $argsForExe).ForEach({ ($_, "`"$_`"")[$_ -match '[&|<>^,; "]'] -replace '(?<=.)"(?!$)', '""' }) + '& exit /b') -join ' ')
+    '/c', (((, $exe + $argsForExe).ForEach({ ($_, "`"$_`"")[$_ -match '[&|<>^,; "]'] -replace '(?<=.)"(?!$)', '""' }) + '& exit') -join ' ')
     $exe = "$env:SystemRoot\System32\cmd.exe"
 
   }

@@ -2,8 +2,11 @@
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.3.1** (2021-04-08):
+  * [enhancement] A `ins` invocation that passes separate arguments to the `-CommandLine` argument string now triggers a warning if these arguments aren't being referenced (such as with `$1` / `%1` on Unix / Windows). This alerts the use to accidental invocation of what should be `ins 'echo foo'` as `ins echo foo`.
+
 * **v1.3** (2021-04-06):
-  * [enhancement] Reliable exit-code reporting for batch-file calls is now built into `ie`, via `cmd /c "<batch-file> ... & exit /b"`, courtesy of [this Stack Overflow post](https://stackoverflow.com/q/66975883/45375).
+  * [enhancement] Reliable exit-code reporting for batch-file calls is now built into `ie`, via `cmd /c "<batch-file> ... & exit"`, courtesy of [this Stack Overflow post](https://stackoverflow.com/q/66975883/45375).
 
 * **v1.2.2** (2021-04-06):
   * [fix] Script block-based PowerShell CLI calls now function properly again.
