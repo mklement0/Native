@@ -199,7 +199,7 @@ Describe 'ie tests' {
   
     }
 
-    It 'Batch-file calls via "cmd /c call" for robust exit-code reporting work.' {
+    It 'Robust exit-code reporting works' {
 
       # For added testing:
       #  * use a batch-file name with spaces
@@ -209,10 +209,11 @@ Describe 'ie tests' {
 
       # Create a temporary batch file that uses exit /b *without* an explicit
       # exit code, which should pass the failing command's exit code (error level) through.
-      # This only happens when the batch file is called via `cmd /c call`
+      # This only happens when the batch file is called via `cmd /c ... & exit `
+      # See https://stackoverflow.com/q/66975883/45375
       '@echo off & whoami -nosuch 2>NUL || exit /b' | Set-Content -LiteralPath $tempBatFile
       
-      $output = ie cmd /c call $tempBatFile $dummyArgs 2>&1
+      $output = ie $tempBatFile $dummyArgs 2>&1
 
       Remove-Item $tempBatFile
 

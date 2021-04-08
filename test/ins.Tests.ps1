@@ -87,6 +87,30 @@ Describe 'ins (Invoke-NativeShell) tests' {
       $cmd | ins | Should -Be $expected
     }
 
+    It 'Calling a batch file reliably reports its exit code.' {
+
+      # For added testing:
+      #  * use a batch-file name with spaces
+      #  * pass escape-triggering dummy arguments.
+      $tempBatFile = Join-Path (Get-Item TestDrive:/).FullName 'tmp 1.cmd'
+      $inArgsStr = '"foo&bar" "unrelated ""stuff"""'
+      $echoedArgsStr = '[{0}] ' -f $inArgsStr # Note the trailing ' ' to account for cmd.exe's `echo` behavior.
+
+      # Create a temporary batch file that uses exit /b *without* an explicit
+      # exit code, which should pass the failing command's exit code (error level) through.
+      # This only happens when the batch file is called via `cmd /c ... & exit `
+      # See https://stackoverflow.com/q/66975883/45375
+      '@echo off & echo [%*] & whoami -nosuch 2>NUL || exit /b' | Set-Content -LiteralPath $tempBatFile
+      
+      $output = ins "`"$tempBatFile`" $inArgsStr"  2>&1
+
+      Remove-Item $tempBatFile
+
+      $output | Should -Be $echoedArgsStr
+      $LASTEXITCODE | Should -Be 1
+
+    }
+
 
   }
 

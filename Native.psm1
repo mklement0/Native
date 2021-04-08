@@ -392,11 +392,12 @@ complex quoting to Bash.
         # Note: For predictability, we use explicit switches in order to get what should be the default
         #       behavior of cmd.exe on a pristine system:
         #       /d == no auto-run, /e:on == enable command extensions; /v:off == disable delayed variable expansion
-        # IMPORTANT: Changes to this call must be replicated in the `else` branch.
-        $input | & $invokingFunction $nativeShellExePath /d /e:on /v:off /c $tmpBatchFile $ArgumentList
+        # IMPORTANT: Changes to this call must be replicated in the `else` branch below.
+        $input | & $invokingFunction $nativeShellExePath /d /e:on /v:off /c "$tmpBatchFile $ArgumentList & exit /b" # !! The '& exit' is for robust exit-code reporting - see https://stackoverflow.com/q/66975883/45375
       } 
       else { 
-        & $invokingFunction $nativeShellExePath /d /e:on /v:off /c $tmpBatchFile $ArgumentList
+        # IMPORTANT: Changes to this call must be replicated in the `if` branch above.
+        & $invokingFunction $nativeShellExePath /d /e:on /v:off /c "$tmpBatchFile $ArgumentList & exit /b" # !! See explanation for the `& exit ` part above.
       }
 
       Remove-Item -ErrorAction Ignore -LiteralPath $tmpBatchFile
@@ -750,27 +751,14 @@ workarounds; e.g.:
   #    !! BE SURE TO REFLECT CHANGES HERE IN THE .NOTES SECTION ABOVE.
   $supportsBackslashDQuoteOnly = -not $IsWindows -or (($exeBaseName -in 'perl', 'ruby', 'Rscript', 'powershell', 'pwsh' -and $ext -eq '.exe') -or ($ext -in '.pl', '.rb', '.r')) # Note: we needn't worry about '.ps1', because they are exeuted in-process.
 
-  # -- A NOTE ON SPECIAL HANDLING FOR BATCH FILES IN ORDER TO *SUPPORT PROPER EXIT-CODE REPORTING*:
-  #    We would LIKE to do this, but ultimately CANNOT, because the only way to ensure it is via `cmd /c call`
-  #    which INVARIABLY DOUBLES '^' characters in double-quoted arguments - see our SO answer at https://stackoverflow.com/a/55290133/45375
-  #    If we did this, we would make it impossible to pass something like "a ^ 2" to a batch file - it would see it as "a ^^ 2".
-  #    Unfortunately, this means that the user will have to use cmd /c call *explicitly* on demand, *if feasible* to get reliable exit-code reporting.
-  #    Our SO *question* at https://stackoverflow.com/a/55290133/45375 is looking for a solution, but I suspect there is none.
-  #    Here's the code that would transform a direct batch-file call into a `cmd /c call "<batch-file> ..."`-based one:
-  #       #  We apply the same transformation as with direct invocation of cmd /c or cmd /k - see comments above - !! PART OF THIS CODE IS DUPLICATED BELOW.
-  #       #  Hypothetical caveat: Since we must use ""-escaping when calling batch files: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), 
-  #       #                       this escaping could still break if the ultimate target executable only supports \"
-  #       #                       A least officially provided CLI entry points hopefully account for that (i.e., they hopefully only chose batch-file entry points if the code ultimately processing the arguments recognizes "" as an escaped ")
-  #       '/c', ((, 'call' + $exe + $argsForExe).ForEach( { ($_, "`"$_`"")[$_ -match '[&|<>^,; "]'] -replace '(?<=.)"(?!$)', '""' }) -join ' ')
-  #       $exe = "$env:SystemRoot\System32\cmd.exe"
-
   # == Construct the array of escaped arguments, if necessary.
   # Note: We cannot use .ForEach('GetType'), because we must remain PSv3-compatible.
   [array] $escapedArgs = 
-  if ($null -eq $argsForExe) {
+  if ($null -eq $argsForExe -and -not $isBatchFile) {
     # To be safe: If there are no arguments to pass, use an *empty array* for splatting so as
     #             to be sure that *no* arguments are passed. We don't want to rely on passing $null
     #             getting the same no-arguments treatment in all PS versions.
+    # Exception:  For robustness, *batch files* must becalled as cmd /c "<batch-file> ... & exit /b" - see below.
     @()
   }
   elseif (-not $script:needQuotingWorkaround -or ($isPsCli -and $orgExeArgs.ForEach('GetType') -contains [scriptblock])) {
@@ -820,10 +808,23 @@ workarounds; e.g.:
           # PowerShell's broken argument-passing will blindly enclose this in `"..."` overall - which is what cmd.exe expects.
           # CAVEAT: Embedded " in individual arguments are ""-escaped to be batch file-friendly, 
           #         but this which can break CLIs that only understand \" - such as WinPS (but fortunately no longer PS Core).
+          # !! PART OF THIS CODE MUST BE KEPT IN SYNC WITH WHAT'S BELOW.
           $argsForExe[($cmdLineArgOptionNdx + 1)..($argsForExe.Count - 1)].ForEach( { ($_, "`"$_`"")[$_ -match '[&|<>^,; "]'] -replace '(?<=.)"(?!$)', '""' }) -join ' '
         }
       }
     }
+  }
+  elseif ($isBatchFile) {
+    # -- SPECIAL HANDLING FOR BATCH FILES IN ORDER TO *SUPPORT RELIABLE EXIT-CODE REPORTING*:
+    #    See our SO post at https://stackoverflow.com/a/55290133/45375
+    #    We call via `cmd /c "<batch-file> ... & exit "`, using the same escaping as for direct `cmd /c` / `cmd /k` calls above.
+    #       #  Hypothetical caveat: Since we must use ""-escaping when calling batch files: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), 
+    #       #                       this escaping could still break if the ultimate target executable only supports \"
+    #       #                       A least officially provided CLI entry points hopefully account for that (i.e., they hopefully only chose batch-file entry points if the code ultimately processing the arguments recognizes "" as an escaped ")
+    # !! PART OF THIS CODE MUST BE KEPT IN SYNC WITH WHAT'S ABOVE.
+    '/c', (((, $exe + $argsForExe).ForEach({ ($_, "`"$_`"")[$_ -match '[&|<>^,; "]'] -replace '(?<=.)"(?!$)', '""' }) + '& exit /b') -join ' ')
+    $exe = "$env:SystemRoot\System32\cmd.exe"
+
   }
   else {
     # Escape all arguments properly to pass them through as seen verbatim by PowerShell.
@@ -836,7 +837,7 @@ workarounds; e.g.:
       #               The assumption is that all executables support \" (typically in *addition* to the Windows-only "").
       #               Batch-file caveat: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), the "" quoting
       #                                  could still break if the ultimate target executable only supports \"
-      $isBatchFile -or $isCmdExe -or $isMsiExecLikeExe
+      $isBatchFile -or $isCmdExe -or $isMsiExecLikeExe # Note: The $isBatchFile case is now handled in a separate block above.
     }
     else {
       # WinPS:
@@ -870,7 +871,7 @@ workarounds; e.g.:
       #       !! We're faced with the choice between passing `FOO=bar`, which makes misexec-style exes happy vs. `"FOO=bar"`, which
       #       !! makes batch-file argument-parsing happy. We give precdence to the FORMER; fortunately, argument *pass-through* with %* isn't affected.
       #     * Potentially (determined below), if *partial* double-quoting is needed (e.g., `FOO="bar none"`)
-      $mustManuallyDQuote = $IsWindows -and -not $hasSpaces -and (($useDoubledDQuotes -and $hasDQuotes) -or ($isBatchFile -and $arg -match '[&|<>^,;]')) # !! see comment re "=" above
+      $mustManuallyDQuote = $IsWindows -and -not $hasSpaces -and (($useDoubledDQuotes -and $hasDQuotes) -or ($isBatchFile -and $arg -match '[&|<>^,;]')) # !! See comment re "=" above; also note: The $isBatchFile case is now handled in a separate block above.
       # Determine if the argument must *end up* with double-quoting on the process command line on Windows, 
       # whether applied as a workaround explicitly by us, or whether triggered by PowerShell due to embedded spaces.
       $mustEndUpDQuoted = $hasSpaces -or $mustManuallyDQuote

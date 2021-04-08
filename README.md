@@ -12,7 +12,8 @@ To **install** it for the current user, run `Install-Module Native -Scope Curren
   * e.g., `ins 'ver & whoami'` on Windows, `ins 'ls / | cat -n'` on Unix.
 
 * [`ie` (short for: **I**nvoke (external) **E**xecutable)](#ie-short-for-invoke-external-executable) allows you to **pass arguments to external programs robustly**, to compensate for PowerShell's broken behavior as of v7.0.
-  * e.g., `'a"b' | ie findstr 'a"b'` on Windows, `'a"b' | ie grep 'a"b'` on Unix.
+  * E.g., `'a"b' | ie findstr 'a"b'` on Windows, `'a"b' | ie grep 'a"b'` on Unix.
+  * The closely related `iee` function additionally reports a script-terminating (fatal by default) error if the external program signals failure via a _nonzero exit code_.
 
 * [`dbea` (`Debug-ExecutableArguments`)](#dbea-debug-executablearguments) is a **diagnostic command** for understanding and **troubleshooting how PowerShell passes arguments to external executables**.
   * e.g., `dbea -- one '' '{ "foo": "bar" }'` vs. - with implicit use of `ie` - `dbea -UseIe -- one '' '{ "foo": "bar" }'`
@@ -28,7 +29,7 @@ All commands come with command-line help; examples, based on `ins`:
 
 ### Known Limitations
 
-* With `ins` (`Invoke-NativeShell`) and `ie`, for technical reasons, you must **check only `$LASTEXITCODE`** for being nonzero in order to determine if the native shell signaled failure; do not use `$?`, whose value always ends up `$true`. Unfortunately, this means that you cannot meaningfully use these commands with `&&` and `||`, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, use the `-e` (`-ErrorOnFailure`) switch with `ins` or use the `iee` wrapper function for `ie`.
+* With `ins` (`Invoke-NativeShell`) and `ie`, for technical reasons, you must **check only `$LASTEXITCODE`** for being nonzero in order to determine if the native shell signaled failure; do not use `$?`, whose value always ends up `$true`. Unfortunately, this means that **you cannot meaningfully use these commands with `&&` and `||`**, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, use the `-e` (`-ErrorOnFailure`) switch with `ins` or use the `iee` wrapper function for `ie`.
 Once the ability for user code to _set_ `$?` [gets implemented](https://github.com/PowerShell/PowerShell/issues/10917#issuecomment-550550490), this problem could be fixed.
 
 * **Passing `--`** to any _PowerShell_ command (which this module's commands invariably are) signals to PowerShell's parameter binder that all subsequent arguments are to be treated as positional ones.
@@ -55,15 +56,16 @@ Once the ability for user code to _set_ `$?` [gets implemented](https://github.c
 
 * Because of the accommodation for `msiexec`-style CLIs, arguments starting with a space-less word followed by`=` (e.g., `a=b`) are passed to batch files with that word and the `=` _unquoted_, which means that if those batch files perform argument-parsing themselves (rather than passing arguments _through_ with `%*`), they see _two_ arguments (e.g. `a` and `b`). Use direct invocation with `--%` to work around this problem, if necessary.
 
-* Note: Calling `cmd.exe` directly with a command line passed as a _single argument_ (which is the only _robust_ way) to either `cmd /c` or `cmd /k` - e.g., `ie cmd /c 'dir "C:\Program Files"'` - is supported,
+### Additional Improvements
+
+ * Calling `cmd.exe` directly with a command line passed as a _single argument_ (which is the only _robust_ way) to either `cmd /c` or `cmd /k` - e.g.,  
+ `ie cmd /c 'dir "C:\Program Files"'` - is supported,
   but you don't actually need `ie` / `iee` for that, because PowerShell's lack of escaping of embedded double quotes is in this case canceled out by `cmd.exe` not expecting such escaping.
   However, as a courtesy, `ie` / `iee` makes a _multi_-argument command line more robust by transforming it into a single-argument one behind the scenes, so that something like  
   `ie cmd.exe /c "c:\program files\powershell\7\pwsh" -noprofile -c "'hi   there'"` works too, not just the single-argument form  
   `ie cmd.exe /c '"c:\program files\powershell\7\pwsh" -noprofile -c "''hi   there''"'`
 
-* Due to `cmd.exe` limitations, a batch file's exit code that isn't _explicitly set_ isn't seen by PowerShell - see [this StackOverflow answer](https://stackoverflow.com/a/66250528/45375) for background.
-For _reliable_ reporting of a batch file's exit code in `$LASTEXITCODE`, batch files must be called via `cmd /c call <batch-file> ...`. Unfortunately, this invariably doubles `^` characters in arguments, 
-which is why `ie` doesn't automatically use this invocation method behind the scenes. Therefore, **unless your arguments contain `^`, it is best to invoke batch files as `ie cmd /c call <batch-file> ...`**
+ * From outside `cmd.exe`, calling batch files directly doesn't robustly report their exit code, notably not when the batch file exits with `... || exit /b` _without_ an explicit exit code, expecting the exit code of the LHS (`...`) to be passed through. Both `ie` / `iee` and `ins` compensate for this problem, using the technique described in [this Stack Overflow post](https://stackoverflow.com/q/66975883/45375).
 
 ## Command Descriptions
 
@@ -98,18 +100,20 @@ Presents a unified interface to the platform-native shell (`cmd.exe` on Windows,
 
   * For technical reasons, you must check only `$LASTEXITCODE` for being nonzero in order to determine if the native shell signaled failure; do not use `$?`, which always ends up `$true`. Unfortunately, this means that you cannot meaningfully use this function with `&&` and `||`, the [pipeline-chain operators](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Pipeline_Chain_Operators); however, if _aborting_ your script in case of a nonzero exit code is desired, use the `-e` (`-ErrorOnFailure`) switch.
 
-### `ie` (short for: **I**nvoke (external) **E**xecutable)
+### `ie` (short for: **I**nvoke (external) **E**xecutable) / `iee`
 
-Robustly passes arguments through to external executables, with proper support for arguments with embedded `"` (double quotes) and for empty string arguments:
+* Robustly passes arguments through to external executables, with proper support for arguments with embedded `"` (double quotes) and for empty string arguments.
 
-* Examples (without the use of `ie`, these commands wouldn't work as expected as of PowerShell 7.0):
+* For _batch-file_ calls, _reliable exit-code reporting_ is ensured, using the technique from [this Stack Overflow post](https://stackoverflow.com/q/66975883/45375).
+
+Examples (without the use of `ie`, these commands wouldn't work as expected as of PowerShell 7.0):
   * Unix: `'a"b' | ie grep 'a"b'`
   * Windows: `'a"b' | ie findstr 'a"b'`
 
 * Note:
   * Unlike `ins`, `ie` expects you to use _PowerShell_ syntax and pass arguments _individually_, as you normally would in direct invocation; in other words: simply place `ie` as the command name before how you would normally invoke the external executable (if the normal invocation would synctactically require `&`, use `ie` _instead_ of `&`.)
 
-  * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.0, [as summarized in GitHub issue #1995](https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
+  * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.0, [as summarized in GitHub issue #15143](https://github.com/PowerShell/PowerShell/issues/15143); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
 
   * For technical reasons:
     * The first occurrence of `--` as a parameter is invariably removed by PowerShell; if your arguments include `--`, use the syntax `ie -- ...`
