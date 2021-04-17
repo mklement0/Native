@@ -134,7 +134,7 @@ Describe 'ie tests' {
       
       $argsToPartiallyQuote | ForEach-Object {
   
-        $exeArgs = $_, 'a " b'  # Add a second argument.
+        $exeArgs = $_, 'a " b'  # Add a second argument, as a control.
 
         # The value part be selectively quoted.
         # ""-escaping must also be triggered (it's what msiexec requires).
@@ -146,14 +146,22 @@ Describe 'ie tests' {
         # !!
         # !!   'msiexec.exe', 'msdeploy.exe' | % { cpi -ea stop (gcm de.exe).Path "./$_"; ie "./$_" 'foo=bar none', '/foo:bar none', '-foo:bar none', 'foo=bar "stuff" none', 'foo=bar"none'; ri "./$_" }
         # !!  
-        $partiallyQuotedArg = (($_ -replace '"', ('""', '\"')[$IsCoreCLR]) -replace '(?<=[:=]).+$', '"$&"')
+        $partiallyQuotedArg = (($_ -replace '"', ('""', '\"')[$IsCoreCLR]) -replace '(?<=[:=]).+$', '"$&"') # turn `'foo=bar none` into `foo="bar none"`, ...
         $expectedRawCmdLine = '{0} {1}' -f $partiallyQuotedArg, ('"a "" b"', '"a \" b"')[$IsCoreCLR]
 
         # Run dbea and extract the raw command line from the output (last non-blank line.)
         $rawCmdLine = ((dbea -UseIe -- $exeArgs) -notmatch '^\s*$')[-1].Trim()
-
         $rawCmdLine | Should -BeExactly $expectedRawCmdLine
-  
+
+        # --- Should also work when a *batch file* is (first) invoked, in which case ""-escaping must be used even in PS Core.
+        # See above.
+        $partiallyQuotedArg = (($_ -replace '"', '""') -replace '(?<=[:=]).+$', '"$&"')
+        $expectedRawCmdLine = '{0} {1}' -f $partiallyQuotedArg, '"a "" b"'
+
+        # Run dbea *via a wrapper batch file* and extract the raw command line from the output (last non-blank line.)
+        $rawCmdLine = ((dbea -UseWrapperBatchFile -UseIe -- $exeArgs) -notmatch '^\s*$')[-1].Trim()
+        $rawCmdLine | Should -BeExactly $expectedRawCmdLine
+        
       }  
 
       

@@ -17,13 +17,34 @@ if (-not (Test-Path Variable:IsCoreCLR)) { $script:IsCoreCLR = $false }
 
 # Test if a workaround for PowerShell's broken argument passing to external
 # programs as described in
-#   https://github.com/PowerShell/PowerShell/issues/1995
+#   https://github.com/PowerShell/PowerShell/issues/1995#issuecomment-562334606
 # is still required.
+# NOTE:
+#  We activate the PowerShell Core 7.2.0-preview.5+ experimental PSNativeCommandArgumentPassing feature, which is 
+#  aimed at fixing #1995, and MAY be good enough to obviate our workarounds, but NOT YET AS OF PowerShell Core 7.2.0-preview.5,
+#  because it LACKS VITAL ACCOMMODATIONS FOR CLIS ON WINDOWS - see https://github.com/PowerShell/PowerShell/issues/15143
+#  We test
+$PSNativeCommandArgumentPassing = 'Standard'
 $script:needQuotingWorkaround = if ($IsWindows) {
-  (choice.exe /d Y /t 0 /m 'Nat "King" Cole') -notmatch '"' # the `choice` command is a trick to print an argument as-is.
+   # The `choice` command is a trick to print an argument as-is; choice.exe expects \"-escaping.
+  (choice.exe /d Y /t 0 /m 'Nat "King" Cole') -notmatch '"' -or
+  $( # The \" test passed, but we must also test for batch-file ("") and msiexec-style accommodations (partial quoting of `foo="bar none"` arguments), in case a fix in PowerShell itself fails to incorporate these.
+    $tmpBatchFile = [IO.Path]::GetTempFileName(); [IO.File]::Delete($tmpBatchFile); $tmpBatchFile += '.cmd'
+    '@echo [%*]' | Set-Content -LiteralPath $tmpBatchFile
+    (& $tmpBatchFile 'Andre "The Hawk" Dawson' 'foo=bar none') -ne '["Andre ""The Hawk"" Dawson" foo="bar none"]'
+    [IO.File]::Delete($tmpBatchFile)
+  )
 }
 else {
+  # NOTE: On Unix, even the currently-lacking experimental PSNativeCommandArgumentPassing feature is a suffixient fix
+  #       that obviates our workaround.
   (printf %s '"ab"') -ne '"ab"'
+}
+
+if ($script:needQuotingWorkaround) {
+  # We've determined that we (still) need our workarounds - on Windows even with PSNativeCommandArgumentPassing as of PowerShell Core 7.2.0-preview.5.
+  # Therefore, we deactivate the feature now, as our workarounds rely on the old, broken behavior.
+  $PSNativeCommandArgumentPassing = 'Legacy'
 }
 
 #region -- EXPORTED members (must be referenced in the *.psd1 file too)
@@ -406,7 +427,7 @@ complex quoting to Bash.
         #       behavior of cmd.exe on a pristine system:
         #       /d == no auto-run, /e:on == enable command extensions; /v:off == disable delayed variable expansion
         # IMPORTANT: Changes to this call must be replicated in the `else` branch below.
-        $input | & $invokingFunction $nativeShellExePath /d /e:on /v:off /c "$tmpBatchFile $ArgumentList & exit" # !! The '& exit' is for robust exit-code reporting - see https://stackoverflow.com/q/66975883/45375
+        $input | & $invokingFunction $nativeShellExePath /d /e:on /v:off /c "$tmpBatchFile $ArgumentList & exit" # !! The '& exit' is for robust exit-code reporting - see https://stackoverflow.com/a/67009271/45375
       } 
       else { 
         # IMPORTANT: Changes to this call must be replicated in the `if` branch above.
@@ -764,6 +785,19 @@ workarounds; e.g.:
   #    !! BE SURE TO REFLECT CHANGES HERE IN THE .NOTES SECTION ABOVE.
   $supportsBackslashDQuoteOnly = -not $IsWindows -or (($exeBaseName -in 'perl', 'ruby', 'Rscript', 'powershell', 'pwsh' -and $ext -eq '.exe') -or ($ext -in '.pl', '.rb', '.r')) # Note: we needn't worry about '.ps1', because they are exeuted in-process.
 
+  # The regex that determines for direct cmd.exe and batch-file calls, both of which are transformed into a `cmd /c "<command-line>"` call,
+  # which arguments require double-quoting, which obviously includes arguments with *spaces*, but also space-*less* arguments that contain
+  # cmd.exe metacharacters.
+  $reMustDQuoteForCmd = '[&|<>^,; "]'
+  # The regex that matches all argument-interior embedded double quotes (to be applied after having enclosed an argument in outer double quotes).
+  $reInteriorDQuotes = '(?<=.)"(?!$)'
+
+  # The regex that identifies msiexec-style arguments such as `FOO="bar none"` or `/foo:"bar none"` / `-foo:"bar none"` that require *partial* double-quoting, namely
+  # of the *value* part (to the right of ":" / "=", if necessary.
+  # The regex splits into property/parameter name and value via capture groups, but itself doesn't try to determine if actual double-quoting of the value part is necessary.
+  # !! CHANGES TO THIS REGEX MUST BE REPLICATED IN THE .NOTES SECTION of the comment-based help above.
+  $rePartialDQuotingCandidate =  '^([/-]\w+[=:]|\w+=)(.+)$'
+
   # == Construct the array of escaped arguments, if necessary.
   # Note: We cannot use .ForEach('GetType'), because we must remain PSv3-compatible.
   [array] $escapedArgs = 
@@ -821,21 +855,26 @@ workarounds; e.g.:
           # PowerShell's broken argument-passing will blindly enclose this in `"..."` overall - which is what cmd.exe expects.
           # CAVEAT: Embedded " in individual arguments are ""-escaped to be batch file-friendly, 
           #         but this which can break CLIs that only understand \" - such as WinPS (but fortunately no longer PS Core).
-          # !! PART OF THIS CODE MUST BE KEPT IN SYNC WITH WHAT'S BELOW.
-          $argsForExe[($cmdLineArgOptionNdx + 1)..($argsForExe.Count - 1)].ForEach( { ($_, "`"$_`"")[$_ -match '[&|<>^,; "]'] -replace '(?<=.)"(?!$)', '""' }) -join ' '
+          $argsForExe[($cmdLineArgOptionNdx + 1)..($argsForExe.Count - 1)].ForEach( { ($_, "`"$_`"")[$_ -match $reMustDQuoteForCmd] -replace $reInteriorDQuotes, '""' }) -join ' '
         }
       }
     }
   }
   elseif ($isBatchFile) {
     # -- SPECIAL HANDLING FOR BATCH FILES IN ORDER TO *SUPPORT RELIABLE EXIT-CODE REPORTING*:
-    #    See our SO post at https://stackoverflow.com/a/55290133/45375
+    #    See our SO question and answer at https://stackoverflow.com/a/67009271/45375
     #    We call via `cmd /c "<batch-file> ... & exit "`, using the same escaping as for direct `cmd /c` / `cmd /k` calls above.
     #       #  Hypothetical caveat: Since we must use ""-escaping when calling batch files: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), 
     #       #                       this escaping could still break if the ultimate target executable only supports \"
     #       #                       A least officially provided CLI entry points hopefully account for that (i.e., they hopefully only chose batch-file entry points if the code ultimately processing the arguments recognizes "" as an escaped ")
-    # !! PART OF THIS CODE MUST BE KEPT IN SYNC WITH WHAT'S ABOVE.
-    '/c', (((, $exe + $argsForExe).ForEach({ ($_, "`"$_`"")[$_ -match '[&|<>^,; "]'] -replace '(?<=.)"(?!$)', '""' }) + '& exit') -join ' ')
+    '/c', (((, $exe + $argsForExe).ForEach({
+      if ($_ -match $rePartialDQuotingCandidate) { # support for partial double-quoting of msiexec-style arguments such as `foo="bar none"` - see above.
+        $prefix, $arg = $Matches[1], $Matches[2]
+      } else {
+        $prefix, $arg = '', $_
+      }
+      $prefix + (($arg, "`"$arg`"")[$arg -match $reMustDQuoteForCmd] -replace $reInteriorDQuotes, '""')
+    }) + '& exit') -join ' ')
     $exe = "$env:SystemRoot\System32\cmd.exe"
 
   }
@@ -903,8 +942,7 @@ workarounds; e.g.:
       #            Only a *space-less* value that needs double-quoting is handled correctly (which may never occur in practice).
       #            Calls to msiexec / msdeploy and cmdkey with values with spaces will therefore break and require --% in v3 and v4 - 
       #            we could blindly still try the partial quoting, as the call will break either way, but it's better to highlight PowerShell's built-in behavior.
-      #            !! CHANGES TO THE REGEX MUST BE REPLICATED IN THE .NOTES SECTION of the comment-based help above.
-      $mustPartiallyDQuote = $IsWindows -and $mustEndUpDQuoted -and $arg -match '^([/-]\w+[=:]|\w+=)(.+)$' -and ($PSVersionTable.PSVersion.Major -ge 5 -or -not $hasSpaces)
+      $mustPartiallyDQuote = $IsWindows -and $mustEndUpDQuoted -and $arg -match $rePartialDQuotingCandidate -and ($PSVersionTable.PSVersion.Major -ge 5 -or -not $hasSpaces)
       if ($mustPartiallyDQuote) {
         # Split into - by definition pass-as-unquoted - prefix and the needs-double-quoting suffix.
         $prefix, $arg = $Matches[1], $Matches[2]
@@ -1143,12 +1181,12 @@ Debug-ExecutableArguments -- -u '' 'https://api.github.com/user/repos' -d '{ "na
 
 On Unix, you'll see the following output as of v7.0:
 
-  4 argument(s) received (enclosed in <...> for delineation):
+  4 argument(s) received (enclosed in «...» for delineation):
 
-    <-u>
-    <https://api.github.com/user/repos>
-    <-d>
-    <{ name: foo }>
+    «-u»
+    «https://api.github.com/user/repos»
+    «-d»
+    «{ name: foo }»
 
 Note the missing empty-string argument and the loss of the embedded " chars.
 
@@ -1333,12 +1371,12 @@ goto :eof
     #       supported on Unix too, we also use @ArgumentList rather than $ArgumentList on Unix.
     $script = @'
 if [ -z "$_dbea_raw" ]; then
-  printf '%s\n\n' "$# argument(s) passed (enclosed in <...> for delineation):"
+  printf '%s\n\n' "$# argument(s) passed (enclosed in «...» for delineation):"
 fi
 
 for a; do 
   if [ -z "$_dbea_raw" ]; then
-    printf '%s\n' "  <$a>"
+    printf '  «%s»\n' "$a"
   else
     printf '%s\n' "$a"
   fi
@@ -1348,6 +1386,7 @@ if [ -z "$_dbea_raw" ]; then
   printf '%s\n'
 fi
 '@
+
     if ($UseIe) {
       # !! The use of `ie` necessitates an extra '--', because the first '--'
       # !! is invariably "eaten" by PowerShell's parameter binding.
@@ -1416,7 +1455,7 @@ static class ConsoleApp {
 
     if (! raw) 
     {
-      Console.WriteLine("{0} argument(s) received (enclosed in <...> for delineation):\n", args.Length);
+      Console.WriteLine("{0} argument(s) received (enclosed in «...» for delineation):\n", args.Length);
     }
 
     for (int i = 0; i < args.Length; ++i) {
@@ -1426,7 +1465,7 @@ static class ConsoleApp {
       }
       else
       {
-        Console.WriteLine("  <{0}>", args[i]);
+        Console.WriteLine("  «{0}»", args[i]);
       }
     }
 
