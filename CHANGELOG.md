@@ -2,6 +2,9 @@
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.3.3** (2021-04-18):
+  * [enhancement] `dbea -UseBatchFile`'s diagnostic output now uses `«` and `»` as well, and now also includes the value of `%*`, i.e. the raw command line (without the batch-file path).
+
 * **v1.3.2** (2021-04-16):
   * [enhancement] `dbea`'s diagnostic output now uses `«` and `»` to enclose arguments, for improved visualization.
   * [fix] PowerShell 7.2.0-preview.5 introduced a new experimental feature named `PSNativeCommandArgumentPassing`, aimed at solving the problem that `ie` solves in PowerShell itself.

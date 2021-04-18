@@ -50,8 +50,8 @@ Describe 'dbea (Debug-ExecutableArguments) tests' {
   It 'Echoes the arguments in diagnostic form.' {
     
     $argList = 'one', 'two'
-    $patternsToFind = $patternsToFindBatchFile = '\b2\b', '\bone\b', '\btwo\b'
-    if ($IsWindows) { $patternsToFind += '\bone two\b' } # Windows only, via binary: the whole command-line
+    $patternsToFind = '\b2\b', '\bone\b', '\btwo\b' # The count of arguments, and the arguments themselves.
+    if ($IsWindows) { $patternsToFind += '\bone two\b' } # Windows only: the whole command-line (sans executable)
 
     $result = dbea -- $argList
     ($result | Select-String $patternsToFind).Count | Should -Be $patternsToFind.Count
@@ -62,7 +62,7 @@ Describe 'dbea (Debug-ExecutableArguments) tests' {
       ($result | Select-String $patternsToFind).Count | Should -Be $patternsToFind.Count
 
       $result = dbea -UseBatchFile -- $argList
-      ($result | Select-String $patternsToFindBatchFile).Count | Should -Be $patternsToFindBatchFile.Count
+      ($result | Select-String $patternsToFind).Count | Should -Be $patternsToFind.Count
     }
 
   }

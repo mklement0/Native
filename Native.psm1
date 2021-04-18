@@ -1192,7 +1192,7 @@ Note the missing empty-string argument and the loss of the embedded " chars.
 
 On Windows, you'll additionally see the following as of v7.0:
 
-  Command line (executable omitted):
+  Command line (without executable):
     -u https://api.github.com/user/repos -d "{ "name": "foo" }"
 
 The command line shows that the empty-argument string was never passed, and
@@ -1303,19 +1303,23 @@ goto for_arg
 setlocal
 
 call :count_args %*
-echo %ReturnValue% argument(s) received (enclosed in ^<...^> for delineation):
+echo %ReturnValue% argument(s) received (enclosed in «...» for delineation):
 echo.
 
 :for_arg
 
   if %1.==. goto for_arg_done
 
-  echo   ^<%1^>
+  echo   «%1»
 
   shift
 goto for_arg
 :for_arg_done
 
+echo.
+echo Command line (without executable; the value of %%*):
+echo.
+echo.  %*
 echo.
 
 goto :eof
@@ -1477,7 +1481,7 @@ static class ConsoleApp {
       string cmdLine = Environment.CommandLine;
       cmdLine = cmdLine.Substring(Regex.Match(cmdLine, "\".+?\"|[^\\s]+").Value.Length).TrimStart();
   
-      Console.WriteLine("\nCommand line (helper executable omitted):\n\n  {0}\n", cmdLine);
+      Console.WriteLine("\nCommand line (without executable):\n\n  {0}\n", cmdLine);
     }
 
     return 0;
