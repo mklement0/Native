@@ -641,7 +641,7 @@ implicitly called when executing files with one of the following extensions,
 which are present in $env:PATHEXT, comprising both VBScript and JScript files
 and their variations, as well as WSH wrapper files:
 
-  .vbs .vbe .js .jse .wsf .wsh
+  Extensions: .vbs .vbe .js .jse .wsf .wsh
 
 In PowerShell Core, which defaults to \"-escaping of embedded ", ""-escaping
 is used when a WSH script is implicitly or explicitly called, which, however,
