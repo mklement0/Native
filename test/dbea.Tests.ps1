@@ -22,7 +22,6 @@ Describe 'dbea (Debug-ExecutableArguments) tests' {
       # Delete an existing cached helper *.exe to force its recreation, so the
       # creation on demand can be tested too.
       # (On Unix, we just use an ad-hoc script, not a cached external utility).
-      # NOTE: The GUID is a static copy of this module's GUID from the *.psd1 file.
       if ($helperExe = Get-Item -ErrorAction Ignore "$env:TEMP\$($manifest.GUID)\dbea.exe") {
         Remove-Item -LiteralPath $helperExe
       }
@@ -37,7 +36,7 @@ Describe 'dbea (Debug-ExecutableArguments) tests' {
         $(foreach ($ndx in 0..$maxNdx) {
           '«{0}» vs. «{1}»' -f $expected[$ndx], $actual[$ndx]
         }) | Write-Host -ForegroundColor Yellow
-        $diff.Count | Should -Be 0
+        $diff | Should -BeNullOrEmpty
       }   
     }
 
@@ -97,6 +96,16 @@ Describe 'dbea (Debug-ExecutableArguments) tests' {
 
   }
 
+  It 'Echoes the arguments as-is with -Raw and -UseWSH' -Skip:(-not $IsWindows) {
+
+    $argList = '-u', 'two (2)', 'three'
+
+    $result = dbea -Raw -UseWSH -- $argList
+    assert-ExpectedResult $argList $result
+
+  }
+
+
   It 'Passes arguments properly with -UseIe' {
 
     # Note: We use an option-like 1st argument to also test the case where 
@@ -127,6 +136,16 @@ Describe 'dbea (Debug-ExecutableArguments) tests' {
 
     $result = dbea -UseIe -Raw -UseWrapperBatchFile -- $argList
     assert-ExpectedResult $argList $result
+
+  }
+
+  It 'Passes arguments properly with -UseIe and -UseWSH' -Skip:(-not $IsWindows) {
+
+    $argList = '-u', '{ "foo": "bar" }'
+    $expectedResult = '-u', '{ foo: bar }' # !! WSH doesn't support embedded " chars., but if `ie` "escapes" them as "", as it should, WSH at least maintains argument boundaries, while stripping the ".
+
+    $result = dbea -UseIe -Raw -UseWSH -- $argList
+    assert-ExpectedResult $expectedResult $result
 
   }
 

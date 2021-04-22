@@ -113,7 +113,7 @@ Examples (without the use of `ie`, these commands wouldn't work as expected as o
 * Note:
   * Unlike `ins`, `ie` expects you to use _PowerShell_ syntax and pass arguments _individually_, as you normally would in direct invocation; in other words: simply place `ie` as the command name before how you would normally invoke the external executable (if the normal invocation would synctactically require `&`, use `ie` _instead_ of `&`.)
 
-  * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.0, [as summarized in GitHub issue #15143](https://github.com/PowerShell/PowerShell/issues/15143); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
+  * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.1, [as summarized in GitHub issue #15143](https://github.com/PowerShell/PowerShell/issues/15143); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
 
   * For technical reasons:
     * The first occurrence of `--` as a parameter is invariably removed by PowerShell; if your arguments include `--`, use the syntax `ie -- ...`

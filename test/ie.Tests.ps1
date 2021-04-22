@@ -27,7 +27,7 @@ Describe 'ie tests' {
         $(foreach ($ndx in 0..$maxNdx) {
           '«{0}» vs. «{1}»' -f $expected[$ndx], $actual[$ndx]
         }) | Write-Host -ForegroundColor Yellow
-        $diff.Count | Should -Be 0
+        $diff | Should -BeNullOrEmpty
       }   
     }
     
@@ -94,6 +94,18 @@ Describe 'ie tests' {
   }
 
   Context "Windows" -Skip:(-not $IsWindows) {
+
+    It 'Uses ""-escaping for batch-file calls' {
+      $exeArgs = 'Andre "The Hawk" Dawson', 'another argument'
+      $expected = '"Andre ""The Hawk"" Dawson"', '"another argument"' # !! Batch files echo argumens exactle as quoted on the command line.
+      assert-ExpectedResult $expected (dbea -UseIe -UseBatchFile -Raw $exeArgs)
+    }
+
+    It 'Uses ""-escaping for WSH calls' {
+      $exeArgs  = 'Andre "The Hawk" Dawson', 'another argument'
+      $expected = 'Andre The Hawk Dawson',   'another argument' # !! WSH doesn't support embedded " chars., but if `ie` "escapes" them as "", as it should, WSH at least maintains argument boundaries, while stripping the ".
+      assert-ExpectedResult $expected (dbea -UseIe -UseWSH -Raw $exeArgs)
+    }
 
     It 'Handles batch-file quoting needs with space-less arguments' {
   

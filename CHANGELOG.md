@@ -2,6 +2,11 @@
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.4** (2021-04-22):
+  * [enhancement] On Windows, `dbea` now supports a `-UseWSH` switch that echoes the arguments via WSH (Windows Script Host); specifically, a temporary VBScript script passed to `cscript.exe` is used.
+  * [enhancement] When using `ie` to invoke a script directly or indirectly via WSH (`cscript.exe` or `wscript.exe`), `""`-escaping of embedded `"` chars. is now also employed in PowerShell Core. While WSH supports neither `""` nor `\"`-escaping, `""`-escaping at least preserves argument boundaries correctly, while still stripping the embedded `"`, unfortunately.
+  * [fix] Temporary files are now properly cleaned up.
+
 * **v1.3.3** (2021-04-18):
   * [enhancement] `dbea -UseBatchFile`'s diagnostic output now uses `«` and `»` as well, and now also includes the value of `%*`, i.e. the raw command line (without the batch-file path).
 

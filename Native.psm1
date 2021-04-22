@@ -26,7 +26,7 @@ if (-not (Test-Path Variable:IsCoreCLR)) { $script:IsCoreCLR = $false }
 #  We test
 $PSNativeCommandArgumentPassing = 'Standard'
 $script:needQuotingWorkaround = if ($IsWindows) {
-   # The `choice` command is a trick to print an argument as-is; choice.exe expects \"-escaping.
+  # The `choice` command is a trick to print an argument as-is; choice.exe expects \"-escaping.
   (choice.exe /d Y /t 0 /m 'Nat "King" Cole') -notmatch '"' -or
   $( # The \" test passed, but we must also test for batch-file ("") and msiexec-style accommodations (partial quoting of `foo="bar none"` arguments), in case a fix in PowerShell itself fails to incorporate these.
     $tmpBatchFile = [IO.Path]::GetTempFileName(); [IO.File]::Delete($tmpBatchFile); $tmpBatchFile += '.cmd'
@@ -405,7 +405,7 @@ complex quoting to Bash.
 
       Write-Verbose "Passing commands via a temporary batch file to $nativeShellExePath..."
 
-      $tmpBatchFile = [IO.Path]::GetTempFileName() + '.cmd'
+      $tmpBatchFile = [IO.Path]::GetTempFileName(); [IO.File]::Delete($tmpBatchFile); $tmpBatchFile += '.cmd'
 
       # Write the command line to the temp. batch file.
       Set-Content -Encoding Oem -LiteralPath $tmpBatchFile -Value "@echo off`n$CommandLine"
@@ -596,10 +596,11 @@ arguments, without their knowledge, so they cannot be compensated for.
 
 External executable in this context means any executable that PowerShell must
 invoke via a child process, which encompasses not just binary executables,
-but also batch files and other shells' or scripting languages' scripts.
+but also batch files, WSH scripts, and other shells' or scripting languages' 
+scripts.
 
 The only reason for this function's existence is that up to at least
-PowerShell 7.0, arguments passed to external programs are not passed
+PowerShell 7.1, arguments passed to external programs are not passed
 correctly if they are either the empty string or have embedded double quotes.
 Should the underlying problem ever be fixed in PowerShell itself, this
 function will no longer apply its workarounds and will effectively act like 
@@ -617,7 +618,8 @@ The specifics of accommodating batch-file calls are as follows:
   or cmd.exe metacharacters such as "&" is enclosed in double quotes
   (whereas PowerShell by default only encloses arguments *with spaces* in
   double quotes); e.g., a verbatim argument seen by PowerShell as `a&b` is
-  placed as `"a&b"` on the command line passed to a batch file.
+  placed as `"a&b"` on the command line passed to a batch file; specifically,
+  the following characters trigger this behavior: & | < > ^ , ; "
 * CAVEAT: An argument that starts with a space-less word followed by `=`, 
   e.g. `a=b`, is always passed with that word and the `=` *unquoted*, as part
   of the accommodations for msiexec-style CLIs (see below). While this doesn't
@@ -631,6 +633,21 @@ NOTE: Calling cmd.exe directly with a command line passed as a single argument
       by cmd.exe not expecting such escaping. Additionally, as a courtesy, this
       function transforms a multi-argument command line into a single-argument
       one for increased robustness.
+
+The specifics of accommodating WSH calls are as follows:
+
+WSH (Windows Script Host, whose CLIs are cscript.exe and wscript.exe) is also 
+implicitly called when executing files with one of the following extensions, 
+which are present in $env:PATHEXT, comprising both VBScript and JScript files
+and their variations, as well as WSH wrapper files:
+
+  .vbs .vbe .js .jse .wsf .wsh
+
+In PowerShell Core, which defaults to \"-escaping of embedded ", ""-escaping
+is used when a WSH script is implicitly or explicitly called, which, however,
+only *mitigates* the fundamental problem that WSH supports neither \" or ""-
+escaping: With ""-escaping, whil the embedded " are still mistakenly
+*stripped*, at least the argument boundaries are preserved.
 
 The specifics of accommodating high-profile CLIs such as msiexec.exe /
 msdeploy.exe and cmdkey.exe are as follows:
@@ -662,7 +679,7 @@ If such an argument is present:
 
 If the accommodation is needed but cannot be applied - in Windows PowerShell 
 v3 and v4 and in PowerShell Core for CLIs other than `msiexec` abd `msideploy`
-- you can call via Invoke-NativeShell.
+- you can call via Invoke-NativeShell or cmd /c "..."
 
 In Windows PowerShell, this function uses "" by default used for "-escaping,
 whereas in PowerShell Core it defaults to the more widely supported \"-escaping.
@@ -684,9 +701,9 @@ When these are called, this function uses \"-escaping in Windows PowerShell
 To avoid the legacy bug when \"-escaping must be used in Windows PowerShell - 
 which affects arguments that have a non-initial embedded " not preceded by an 
 unprotected space char, such as `print("hi there")` or `3" of snow` - a
-trailing, unprotected space is added to the argument, based on the assumptiong
-that a *command line* for the target CLI is being passed (as a single string), 
-where trailing spaces should not affect functionality.
+trailing, unprotected space is added to the argument, based on the assumption
+that a *whole command line* for the target CLI is being passed (as a single 
+string), in which case trailing spaces should not affect functionality.
 
 However, this workaround cannot be safely applied to arguments passed to
 *scripts* implicitly executed by these target CLIs, such as `.rb` files for
@@ -769,7 +786,8 @@ workarounds; e.g.:
 
   # Infer various executable characteristics:
   $isBatchFile = $IsWindows -and $ext -in '.cmd', '.bat'
-  $isCmdExe = $IsWindows -and ($exeBaseName -eq 'cmd' -and $ext -eq '.exe') # cmd.exe, the legacy Windows shell
+  $isCmdExe = $IsWindows -and -not $isBatchFile -and ($exeBaseName -eq 'cmd' -and $ext -eq '.exe') # cmd.exe, the legacy Windows shell
+  $isWsh = $IsWindows -and -not ($isBatchFile -or $isCmdExe) -and ($ext -in '.vbs', '.vbe', '.js', '.jse', '.wsh', '.wsf' -or ($exeBaseName -in 'cscript', 'wscript' -and $ext -eq '.exe')) # WSH is being called, either explicitly or 
   # See if a PowerShell CLI is being invoked, so we can detect whether a *script block* is among the arguments,
   # which causes PowerShell to transform the invocation into a Base64-encoded one using the -encodedCommand CLI parameter.
   $isPsCli = $exeBaseName -in 'powershell', 'pwsh' -and $ext -in $null, '.exe'
@@ -787,7 +805,9 @@ workarounds; e.g.:
 
   # The regex that determines for direct cmd.exe and batch-file calls, both of which are transformed into a `cmd /c "<command-line>"` call,
   # which arguments require double-quoting, which obviously includes arguments with *spaces*, but also space-*less* arguments that contain
-  # cmd.exe metacharacters.
+  # cmd.exe metacharacters. 
+  # NOTE: "=" - even though it also serves as an argument separator, alongside space, "," and ";" - is NOT included, so as to give precedence to the msiexec-style partial double-quoting requirements.
+  # !! CHANGES TO THIS REGEX MUST BE REPLICATED IN THE .NOTES SECTION of the comment-based help above.
   $reMustDQuoteForCmd = '[&|<>^,; "]'
   # The regex that matches all argument-interior embedded double quotes (to be applied after having enclosed an argument in outer double quotes).
   $reInteriorDQuotes = '(?<=.)"(?!$)'
@@ -796,7 +816,7 @@ workarounds; e.g.:
   # of the *value* part (to the right of ":" / "=", if necessary.
   # The regex splits into property/parameter name and value via capture groups, but itself doesn't try to determine if actual double-quoting of the value part is necessary.
   # !! CHANGES TO THIS REGEX MUST BE REPLICATED IN THE .NOTES SECTION of the comment-based help above.
-  $rePartialDQuotingCandidate =  '^([/-]\w+[=:]|\w+=)(.+)$'
+  $rePartialDQuotingCandidate = '^([/-]\w+[=:]|\w+=)(.+)$'
 
   # == Construct the array of escaped arguments, if necessary.
   # Note: We cannot use .ForEach('GetType'), because we must remain PSv3-compatible.
@@ -867,14 +887,16 @@ workarounds; e.g.:
     #       #  Hypothetical caveat: Since we must use ""-escaping when calling batch files: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), 
     #       #                       this escaping could still break if the ultimate target executable only supports \"
     #       #                       A least officially provided CLI entry points hopefully account for that (i.e., they hopefully only chose batch-file entry points if the code ultimately processing the arguments recognizes "" as an escaped ")
-    '/c', (((, $exe + $argsForExe).ForEach({
-      if ($_ -match $rePartialDQuotingCandidate) { # support for partial double-quoting of msiexec-style arguments such as `foo="bar none"` - see above.
-        $prefix, $arg = $Matches[1], $Matches[2]
-      } else {
-        $prefix, $arg = '', $_
-      }
-      $prefix + (($arg, "`"$arg`"")[$arg -match $reMustDQuoteForCmd] -replace $reInteriorDQuotes, '""')
-    }) + '& exit') -join ' ')
+    '/c', (((, $exe + $argsForExe).ForEach( {
+            if ($_ -match $rePartialDQuotingCandidate) {
+              # support for partial double-quoting of msiexec-style arguments such as `foo="bar none"` - see above.
+              $prefix, $arg = $Matches[1], $Matches[2]
+            }
+            else {
+              $prefix, $arg = '', $_
+            }
+            $prefix + (($arg, "`"$arg`"")[$arg -match $reMustDQuoteForCmd] -replace $reInteriorDQuotes, '""')
+          }) + '& exit') -join ' ')
     $exe = "$env:SystemRoot\System32\cmd.exe"
 
   }
@@ -885,11 +907,15 @@ workarounds; e.g.:
     $useDoubledDQuotes = if ($IsCoreCLR) {
       # PSCore:
       # * On Unix: we always use \" (which ProcessStartInfo.Arguments recognizes when it parses the pseudo command line into the array of arguments).
-      # * On Windows: We only use "" if we have to: for batch files and direct cmd.exe calls, and for misexec-like executables.
+      # * On Windows: We only use "" if we have to: for batch files and direct cmd.exe calls, for misexec-like executables, and for WSH calls (VBScript, JScript)
       #               The assumption is that all executables support \" (typically in *addition* to the Windows-only "").
       #               Batch-file caveat: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), the "" quoting
       #                                  could still break if the ultimate target executable only supports \"
-      $isBatchFile -or $isCmdExe -or $isMsiExecLikeExe # Note: The $isBatchFile case is now handled in a separate block above.
+      #               WSH limitation: WSH supports neither "" nor \" as an escaped, embedded ", but using "" is *less* broken than \", 
+      #                               because - even though the embedded " are still *stripped* - at least the argument boundaries are preseved
+      #                               (because somethinglike `"Nat ""King"" Cole"` is parsed as a compound token composed of `"Nat "`, `"King"`, and `"Cole"`),
+      #                               whereas \" would not only not preserve argument boundaries but also retain the \ chars. 
+      $isBatchFile -or $isCmdExe -or $isMsiExecLikeExe -or $isWsh # Note: The $isBatchFile case is now handled in a separate block above.
     }
     else {
       # WinPS:
@@ -996,7 +1022,7 @@ workarounds; e.g.:
   }
 
   if ($DebugPreference -eq 'Continue') {
-      # See the verbatim arguments about to be passed.
+    # See the verbatim arguments about to be passed.
     , $exe + $escapedArgs | % { "«$_»" } | Write-Debug
   }
 
@@ -1169,6 +1195,10 @@ This is useful for testing how CLIs that use a wrapper batch file as their
 entry point ultimately receive arguments. The Azure CLI is a prominent
 example.
 
+.PARAMETER UseWSH
+On Windows, uses a VBScript file executed via WSH (cscript.exe) rather than 
+the helper binary to print the arguments it receives in diagnostic form.
+
 .PARAMETER Raw
 Prints the arguments only, as-is, each on its own line. 
 No delimiters are used and no other information is printed.
@@ -1242,16 +1272,19 @@ its re-creation on the next invocation.
     [Parameter(ParameterSetName = 'WrapperBatchFile', Mandatory)]
     [switch] $UseWrapperBatchFile
     ,
+    [Parameter(ParameterSetName = 'WSH', Mandatory)]
+    [switch] $UseWSH
+    ,
     [Alias('ie')]
     [switch] $UseIe
     ,
     [switch] $Raw
   )
   
-  if (($UseBatchFile -or $UseWrapperBatchFile) -and -not $IsWindows) {
+  if (($UseBatchFile -or $UseWrapperBatchFile -or $UseWSH) -and -not $IsWindows) {
     Throw (
       (New-Object System.Management.Automation.ErrorRecord (
-          [System.PlatformNotSupportedException] "The -UseBatchFile and -UseWrapperBatchFile parameters are supported on Windows only.", 
+          [System.PlatformNotSupportedException] "The -UseBatchFile, -UseWrapperBatchFile, and -UseWSH parameters are only supported on Windows.", 
           'PlatformNotSupportedException', 
           'InvalidArgument', 
           $null
@@ -1275,7 +1308,7 @@ its re-creation on the next invocation.
 
     if ($UseBatchFile -or $UseWrapperBatchFile) {
   
-      $tmpBatchFile = [IO.Path]::GetTempFileName() + '.cmd'
+      $tmpBatchFile = [IO.Path]::GetTempFileName(); [IO.File]::Delete($tmpBatchFile); $tmpBatchFile += '.cmd'
     
       $content = if ($UseWrapperBatchFile) {
         # The wrapper batch file simply passes all args through to the helper binary.
@@ -1351,8 +1384,60 @@ goto :eof
     
       Remove-Item -ErrorAction Ignore -LiteralPath $tmpBatchFile
     
+    } # END of: if ($UseBatchFile -or $UseWrapperBatchFile)
+    elseif ($UseWSH) {
+
+      $tmpVbScriptFile = [IO.Path]::GetTempFileName(); [IO.File]::Delete($tmpVbScriptFile); $tmpVbScriptFile += '.vbs'
+
+      # Create the argument-echoing VBScript file on demand.
+      $content = if ($Raw) {
+        @'
+for each arg in WScript.Arguments
+  WScript.Echo arg
+next
+'@
+      }
+      else {
+        @'
+WScript.Echo CStr(WScript.Arguments.Count) + " argument(s) received:" + vbLf
+
+Dim i
+i = 0
+for each arg in WScript.Arguments
+  i = i + 1
+  WScript.Echo "  «" + arg + "»"
+next
+
+WScript.Echo
+'@
+      }
+
+      # We must use ANSI encoding for the «» chars. to render properly.
+      if ($IsCoreCLR) {
+        [int] $ansiCp = (Get-ItemProperty HKLM:\SYSTEM\CurrentControlSet\Control\Nls\CodePage ACP).ACP
+        Set-Content -Encoding $ansiCp -LiteralPath $tmpVbScriptFile -Value $content
+      }
+      else {
+        Set-Content -Encoding Default -LiteralPath $tmpVbScriptFile -Value $content
+      }
+
+      Write-Verbose "Executing argument-echoing VBScript file via WSH: $tmpVbScriptFile"
+
+      # Note: We explicitly use @ArgumentList rather than $ArgumentList,
+      #       because we want to support --%, the stop-parsing symbol.
+      #       Also, we use cscript.exe explicitly to ensure console output (default host may be wscript.exe)
+      if ($UseIe) {
+        ie cscript.exe $tmpVbScriptFile @ArgumentList
+      }
+      else {
+        & cscript.exe $tmpVbScriptFile @ArgumentList
+      }
+
+      Remove-Item -ErrorAction Ignore -LiteralPath $tmpVbScriptFile
+      
     }
     else {
+      # Windows, no batch file or WSH
       # Note: We explicitly use @ArgumentList rather than $ArgumentList,
       #       because (on Windows) we want to support --%, the stop-parsing symbol.
       Write-Verbose "Executing helper binary: $helperBinary"
@@ -1364,7 +1449,8 @@ goto :eof
       }
     }
 
-  }
+
+  } # END of: if ($IsWindows)
   else {
     # Unix
 
