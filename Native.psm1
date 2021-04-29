@@ -694,9 +694,9 @@ use the CommandLineToArgvW  WinAPI function to parse their command line support
 instead.
 
 However, there are high-profile exceptions: 
-  ruby, perl, Rscript, and PowerShell's own CLIs, pwsh and powershell.
+  ruby, perl, Rscript, git, and Windows PowerShell's own CLI, powershell.
 When these are called, this function uses \"-escaping in Windows PowerShell
-(too), becaues the use of embedded " chars. would otherwise fail fundamentally.
+(too), because the use of embedded " chars. would otherwise fail fundamentally.
 
 To avoid the legacy bug when \"-escaping must be used in Windows PowerShell - 
 which affects arguments that have a non-initial embedded " not preceded by an 
@@ -705,10 +705,10 @@ trailing, unprotected space is added to the argument, based on the assumption
 that a *whole command line* for the target CLI is being passed (as a single 
 string), in which case trailing spaces should not affect functionality.
 
-However, this workaround cannot be safely applied to arguments passed to
-*scripts* implicitly executed by these target CLIs, such as `.rb` files for
-Ruby. Again, Invoke-NativeShell or direct invocation with use of --% offer
-workarounds; e.g.:
+However, this workaround cannot be safely applied to git calls and arguments 
+passed to *scripts* implicitly executed by these target CLIs, such as `.rb`
+files for Ruby. Again, Invoke-NativeShell or direct invocation with use of 
+--% offer workarounds; e.g.:
   .\foo.rb --% "3\" of snow"
 
 #>
@@ -801,7 +801,7 @@ workarounds; e.g.:
   #    THIS BLACKLIST ONLY APPLIES TO *WINDOWS POWERSHELL*, where we default to ""-escaping to work around legacy bugs.
   #    (In PS Core we default to \"=escaping anyway.)
   #    !! BE SURE TO REFLECT CHANGES HERE IN THE .NOTES SECTION ABOVE.
-  $supportsBackslashDQuoteOnly = -not $IsWindows -or (($exeBaseName -in 'perl', 'ruby', 'Rscript', 'powershell', 'pwsh' -and $ext -eq '.exe') -or ($ext -in '.pl', '.rb', '.r')) # Note: we needn't worry about '.ps1', because they are exeuted in-process.
+  $supportsBackslashDQuoteOnly = -not $IsWindows -or (($exeBaseName -in 'perl', 'ruby', 'Rscript', 'powershell', 'git' -and $ext -eq '.exe') -or ($ext -in '.pl', '.rb', '.r')) # Note: we needn't worry about '.ps1', because they are exeuted in-process.
 
   # The regex that determines for direct cmd.exe and batch-file calls, both of which are transformed into a `cmd /c "<command-line>"` call,
   # which arguments require double-quoting, which obviously includes arguments with *spaces*, but also space-*less* arguments that contain
@@ -978,7 +978,7 @@ workarounds; e.g.:
         $prefix = ''
       }
   
-      if ($hasDQuotes -and -not $IsCoreCLR -and $supportsBackslashDQuoteOnly -and $ext -eq '.exe' -and $arg -match '^[^ ]+\".*? .*\"[^ ]*$') {        
+      if ($hasDQuotes -and -not $IsCoreCLR -and $supportsBackslashDQuoteOnly -and $ext -eq '.exe' -and $exeBaseName -ne 'git' -and $arg -match '^[^ ]+\".*? .*\"[^ ]*$') {
         # !! Hack to work around a WinPS bug:
         # !! If the \"-escaping must be used in arguments with spaces, WinPS doesn't recognize the need to "..."-enclose the argument
         # !! if those spaces are inside the \"...\" sequence *and what precedes the opening \" contains no spaces*.
@@ -988,10 +988,10 @@ workarounds; e.g.:
         # !!
         # !! Given that we therefore use \"-escaping only for "blacklisted" CLIs of which we know that they don't support ""-escaping, 
         # !! and of which we also know that they expect command lines of *theirs* passed as single strings
-        # !! (ruby, perl, Rscript, pwsh, powershell; e.g., `Rscript -e 'print("hi there")'`),
+        # !! (ruby, perl, Rscript, powershell; e.g., `Rscript -e 'print("hi there")'`),
         # !! we assume that *adding an extra, unprotected leading or trailing space* to avoid the bug is *benign*.
         # !! Note:
-        # !!  If a *script* for one of these CLIs is called, we must *not* apply this hack, because the script arguments
+        # !!  If a *script* for one of these CLIs is *directly* called, we must *not* apply this hack, because the script arguments
         # !!  cannot be assumed to be *command lines* for the implied target CLI, so such invocations will *break*.
         # !!  However, it is less likely that arguments of the problematic form are passed - as data rather than code - to scripts.
         # Write-Debug "adding trailing space for \"-only CLI to work around WinPS bug: $arg"
@@ -1022,8 +1022,8 @@ workarounds; e.g.:
   }
 
   if ($DebugPreference -eq 'Continue') {
-    # See the verbatim arguments about to be passed.
-    , $exe + $escapedArgs | % { "«$_»" } | Write-Debug
+    # Print the verbatim arguments about to be passed.
+    , $exe + $escapedArgs | ForEach-Object { "«$_»" } | Write-Debug
   }
 
   # Finally, invoke the executable with the properly escaped arguments, if any, possibly with pipeline input.  

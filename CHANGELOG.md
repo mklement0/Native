@@ -2,6 +2,9 @@
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.4.2** (2021-04-29):
+  * [enhancement] In _Windows PowerShell_, `\"`-escaping is now also used for `git.exe`, which only recognizes this form. (In PowerShell _Core_, `\"`-escaping is used by default anyway.) Note that while this should work in general, Windows PowerShell's limitations prevent passing an argument such as `'"foo bar"` properly, because the resulting escaped `\"foo bar\"` is mistakenly passed as-is rather than as `"\"foo bar\""`. That is, in Windows PowerShell passing an argument whose embedded `"` are at the very start and end isn't supported for those executables where `\"`-escaping must be used, unfortunately. Additionally, `pwsh.exe` now no longer triggers `\"`-escaping, because - unlike `powershell.exe` - it also recognizes `""`-escaping.
+
 * **v1.4.1** (2021-04-22):
   * [fix] Comment-based help for `ie` works again (a syntax problem in v1.4 broke it).
 
