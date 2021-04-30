@@ -46,23 +46,34 @@ Describe 'dbea (Debug-ExecutableArguments) tests' {
     { dbea -UseBatchFile -UseWrapperBatchFile } | Should -Throw -ExceptionType System.Management.Automation.ParameterBindingException
   }
 
-  It 'Echoes the arguments in diagnostic form.' {
+  It 'Echoes the arguments in diagnostic form via an executable.' {
     
     $argList = 'one', 'two'
     $patternsToFind = '\b2\b', '\bone\b', '\btwo\b' # The count of arguments, and the arguments themselves.
-    if ($IsWindows) { $patternsToFind += '\bone two\b' } # Windows only: the whole command-line (sans executable)
+    if ($IsWindows) { $patternsToFind += '\bone two\b' } # Windows only: the list of arguments from whole command line.
 
     $result = dbea -- $argList
     ($result | Select-String $patternsToFind).Count | Should -Be $patternsToFind.Count
-    # Compare-Object $argList $result | ForEach-Object $sbFormatUnexpectedOutput | Should -BeNull
 
-    if ($IsWindows) {
-      $result = dbea -UseWrapperBatchFile -- $argList
-      ($result | Select-String $patternsToFind).Count | Should -Be $patternsToFind.Count
+  }
 
-      $result = dbea -UseBatchFile -- $argList
-      ($result | Select-String $patternsToFind).Count | Should -Be $patternsToFind.Count
-    }
+  It 'Echoes the arguments in diagnostic form with -UseBatchFile' -Skip:(-not $IsWindows) {
+    
+    $argList = 'one', 'two'
+    $patternsToFind = '\b2\b', '\bone\b', '\btwo\b', '\bone two\b' # The count of arguments, and the arguments themselves, and the list of arguments from whole command line.
+
+    $result = dbea -UseBatchFile -- $argList
+    ($result | Select-String $patternsToFind).Count | Should -Be $patternsToFind.Count
+
+  }
+
+  It 'Echoes the arguments in diagnostic form with -UseWrapperBatchFile' -Skip:(-not $IsWindows) {
+    
+    $argList = 'one', 'two'
+    $patternsToFind = '\b2\b', '\bone\b', '\btwo\b', '\bone two\b' # The count of arguments, and the arguments themselves, and the list of arguments from whole command line.
+
+    $result = dbea -UseWrapperBatchFile -- $argList
+    ($result | Select-String $patternsToFind).Count | Should -Be $patternsToFind.Count
 
   }
 

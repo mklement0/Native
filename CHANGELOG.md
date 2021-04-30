@@ -2,6 +2,11 @@
 
 <!-- RETAIN THIS COMMENT. An entry template for a new version is automatically added each time `Invoke-psake version` is called. Fill in changes afterwards. -->
 
+* **v1.5** (2021-04-30):
+  * [enhancement] `\"`-escaping is now also the default in Windows PowerShell, as was already the case in PowerShell Core, which notably now makes `git` calls with embedded double quotes work correctly. The edge cases in which Windows PowerShell neglects to provide enclosing double-quoting are now avoided by using `--%` behind the scenes.
+  * [fix] Compatibility with Windows PowerShell v3 and v4 restored.
+  * [fix] Workaround for calling batch files whose paths need double-quoting on Windows versions before Windows 10: since double-quoting there breaks the `cmd /c "<batch-file> ... & exit"` invocation used behind the scenes, the short (8.3) version of the path is used, which doesn't require double-quoting.
+
 * **v1.4.2** (2021-04-29):
   * [enhancement] In _Windows PowerShell_, `\"`-escaping is now also used for `git.exe`, which only recognizes this form. (In PowerShell _Core_, `\"`-escaping is used by default anyway.) Note that while this should work in general, Windows PowerShell's limitations prevent passing an argument such as `'"foo bar"` properly, because the resulting escaped `\"foo bar\"` is mistakenly passed as-is rather than as `"\"foo bar\""`. That is, in Windows PowerShell passing an argument whose embedded `"` are at the very start and end isn't supported for those executables where `\"`-escaping must be used, unfortunately. Additionally, `pwsh.exe` now no longer triggers `\"`-escaping, because - unlike `powershell.exe` - it also recognizes `""`-escaping.
 

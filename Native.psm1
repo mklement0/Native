@@ -582,7 +582,7 @@ That you must *quote* arguments that contain commas, look like `-foo:bar` or
   - which this module's commands are - receive such arguments differently
   than external executables, namely as *arrays*, and passing such arrays on to
   external executables invariably passes the array's elements as *individual
-  argumetns*:
+  arguments*:
      * `a,b` and `a, b` both become array `'a', 'b'`, which, when passed to an
        external exeuctables passes two separate arguments `a` and `b`.
 
@@ -599,7 +599,7 @@ invoke via a child process, which encompasses not just binary executables,
 but also batch files, WSH scripts, and other shells' or scripting languages' 
 scripts.
 
-The only reason for this function's existence is that up to at least
+The only reason for this function's existence is that, up to at least
 PowerShell 7.1, arguments passed to external programs are not passed
 correctly if they are either the empty string or have embedded double quotes.
 Should the underlying problem ever be fixed in PowerShell itself, this
@@ -643,11 +643,11 @@ and their variations, as well as WSH wrapper files:
 
   Extensions: .vbs .vbe .js .jse .wsf .wsh
 
-In PowerShell Core, which defaults to \"-escaping of embedded ", ""-escaping
-is used when a WSH script is implicitly or explicitly called, which, however,
-only *mitigates* the fundamental problem that WSH supports neither \" or ""-
-escaping: With ""-escaping, whil the embedded " are still mistakenly
-*stripped*, at least the argument boundaries are preserved.
+""-escaping of embedded double quotes is used when a WSH script is implicitly 
+or explicitly called, which, however, only *mitigates* the fundamental problem
+that WSH supports neither \" or ""-escaping: With ""-escaping, while the 
+embedded " are still mistakenly *stripped*, at least the argument boundaries
+are preserved.
 
 The specifics of accommodating high-profile CLIs such as msiexec.exe /
 msdeploy.exe and cmdkey.exe are as follows:
@@ -663,53 +663,15 @@ triggers the behavior.
 
 If such an argument is present:
 
-* In PowerShell v5.1 and above, if the <value> part has spaces, only *it* is 
-  enclosed in double quotes, *not* the argument *as a whole* (which is what
-  PowerShell - justifiably - does by default); e.g., a verbatim argument
-  seen by PowerShell as `foo=bar none` is placed as `foo="bar none"` on the
-  process' command line (rather than as `"foo=bar none"`).
-  The aforementioned high-profile CLIs require this very specific form of
-  quoting, unfortunately.
-  Unfortunately, this accommodation doesn't work in PowerShell v3 and v4.
+* If the <value> part has spaces, only *it* is enclosed in double quotes, 
+  not the argument *as a whole* (which is what PowerShell - justifiably - does 
+  by default); e.g., a verbatim argument seen by PowerShell as `foo=bar none`
+  is placed as `foo="bar none"` on the process' command line (rather than as 
+  `"foo=bar none"`). The aforementioned high-profile CLIs require this very 
+  specific form of quoting, unfortunately.
 
-* Additionally, embedded double quotes, if any, are escaped as "":
-  * in PowerShell *Core*: for `msiexec` abd `msideploy` *only*
-  * in *Windows PowerShell*: for *all* executables, with only a few well-known 
-    exceptions (see below).
-
-If the accommodation is needed but cannot be applied - in Windows PowerShell 
-v3 and v4 and in PowerShell Core for CLIs other than `msiexec` abd `msideploy`
-- you can call via Invoke-NativeShell or cmd /c "..."
-
-In Windows PowerShell, this function uses "" by default used for "-escaping,
-whereas in PowerShell Core it defaults to the more widely supported \"-escaping.
-
-Note: The use of ""-escaping by default in Windows PowerShell, employed to
-work around a legacy bug, is a compromise that favors avoiding broken behavior
-with embedded quotes over supporting CLIs that do not support ""-escaping. 
-
-Most CLIs on Windows support *both* "" and \"-escaping, but notably those that
-use the CommandLineToArgvW  WinAPI function to parse their command line support
-\" only. The assumption is that *most* CLIs use the C/C++ runtime's argv parsing
-instead.
-
-However, there are high-profile exceptions: 
-  ruby, perl, Rscript, git, and Windows PowerShell's own CLI, powershell.
-When these are called, this function uses \"-escaping in Windows PowerShell
-(too), because the use of embedded " chars. would otherwise fail fundamentally.
-
-To avoid the legacy bug when \"-escaping must be used in Windows PowerShell - 
-which affects arguments that have a non-initial embedded " not preceded by an 
-unprotected space char, such as `print("hi there")` or `3" of snow` - a
-trailing, unprotected space is added to the argument, based on the assumption
-that a *whole command line* for the target CLI is being passed (as a single 
-string), in which case trailing spaces should not affect functionality.
-
-However, this workaround cannot be safely applied to git calls and arguments 
-passed to *scripts* implicitly executed by these target CLIs, such as `.rb`
-files for Ruby. Again, Invoke-NativeShell or direct invocation with use of 
---% offer workarounds; e.g.:
-  .\foo.rb --% "3\" of snow"
+* Additionally, embedded double quotes, if any, are escaped as "" for the
+  following executables: msiexec.exe, msdeploy.exe, and cmdkey.exe
 
 #>
 
@@ -794,15 +756,7 @@ files for Ruby. Again, Invoke-NativeShell or direct invocation with use of
   # See if the exe is one of the high-profile CLIs that require *partial* double-quoting of arguments such as `FOO="bar none"`.
   # Also, these exes require ""-escaping (except cmdkey.exe, which doesn't support embedded " at all).
   $isMsiExecLikeExe = $exeBaseName -in 'msiexec', 'msdeploy', 'cmdkey' -and $ext -eq '.exe'
-  # Determine whether the target executable *only* supports \" for "-escaping.
-  #  * On Unix, that applies to *all* executables (if invoked via a pseudo-command line assigned to ProcessStartInfo.Arguments, as PowerShell currently does).
-  #  * On Windows, where most CLIs support *both* \" and "", supporting \" *only* is limited to a few WELL-KNOWN CLIs,
-  #    which are BLACKLISTED HERE (of course, there could be more).
-  #    THIS BLACKLIST ONLY APPLIES TO *WINDOWS POWERSHELL*, where we default to ""-escaping to work around legacy bugs.
-  #    (In PS Core we default to \"=escaping anyway.)
-  #    !! BE SURE TO REFLECT CHANGES HERE IN THE .NOTES SECTION ABOVE.
-  $supportsBackslashDQuoteOnly = -not $IsWindows -or (($exeBaseName -in 'perl', 'ruby', 'Rscript', 'powershell', 'git' -and $ext -eq '.exe') -or ($ext -in '.pl', '.rb', '.r')) # Note: we needn't worry about '.ps1', because they are exeuted in-process.
-
+  
   # The regex that determines for direct cmd.exe and batch-file calls, both of which are transformed into a `cmd /c "<command-line>"` call,
   # which arguments require double-quoting, which obviously includes arguments with *spaces*, but also space-*less* arguments that contain
   # cmd.exe metacharacters. 
@@ -818,8 +772,9 @@ files for Ruby. Again, Invoke-NativeShell or direct invocation with use of
   # !! CHANGES TO THIS REGEX MUST BE REPLICATED IN THE .NOTES SECTION of the comment-based help above.
   $rePartialDQuotingCandidate = '^([/-]\w+[=:]|\w+=)(.+)$'
 
+  $useStopParsingSymbol = $false # may be set below.
+
   # == Construct the array of escaped arguments, if necessary.
-  # Note: We cannot use .ForEach('GetType'), because we must remain PSv3-compatible.
   [array] $escapedArgs = 
   if ($null -eq $argsForExe -and -not $isBatchFile) {
     # To be safe: If there are no arguments to pass, use an *empty array* for splatting so as
@@ -828,7 +783,7 @@ files for Ruby. Again, Invoke-NativeShell or direct invocation with use of
     # Exception:  For robustness, *batch files* must becalled as cmd /c "<batch-file> ... & exit /b" - see below.
     @()
   }
-  elseif (-not $script:needQuotingWorkaround -or ($isPsCli -and $orgExeArgs.ForEach('GetType') -contains [scriptblock])) {
+  elseif (-not $script:needQuotingWorkaround -or ($isPsCli -and ($orgExeArgs | ForEach-Object GetType) -contains [scriptblock])) { # Note: We cannot use .ForEach('GetType'), because we must remain PSv3-compatible.
     # Use the arguments as-is if (a) the quoting workaround is no longer needed or (b) the engine itself will aply Base64-encoding behind the scenes
     # using the -encodedCommand CLI parameter.
     # Note: As of PowerShell Core 7.1.0-preview.5, the engine unexpectedly applies Base64-encoding in the presence of a [scriptblock] argument alone,
@@ -870,24 +825,58 @@ files for Ruby. Again, Invoke-NativeShell or direct invocation with use of
         }
         else {
           # *multi*-argument command line.
-          # As a courtesy, we transform these multiple arugments into a *single*-argument command line, by 
+          # As a courtesy, we transform these multiple arguments into a *single*-argument command line, by 
           # space-joining them, which requires double-quoting them individually on demand, as for batch files.
           # PowerShell's broken argument-passing will blindly enclose this in `"..."` overall - which is what cmd.exe expects.
           # CAVEAT: Embedded " in individual arguments are ""-escaped to be batch file-friendly, 
           #         but this which can break CLIs that only understand \" - such as WinPS (but fortunately no longer PS Core).
-          $argsForExe[($cmdLineArgOptionNdx + 1)..($argsForExe.Count - 1)].ForEach( { ($_, "`"$_`"")[$_ -match $reMustDQuoteForCmd] -replace $reInteriorDQuotes, '""' }) -join ' '
+
+          # First, check if the command (first post-/c-or/k argument) is an executable path needs double-quoting.
+          $indirectExe = $argsForExe[$cmdLineArgOptionNdx + 1]
+          if ($indirectExe -match $reMustDQuoteForCmd) {
+            if ([Environment]::OSVersion.Version.Major -lt 10) {
+              # !! Before W10 (definitely on W7, up to 8.1?), cmd.exe breaks with `cmd /c "<double-quoted-batch-filepath> ..." invocations, 
+              # !! so we use the short, 8.3 version of the batch file path, which doesn't require quoting.
+              if ($inDirectExeFullPath = (Get-Command -Erroraction Ignore $indirectExe).Path) {
+                $indirectExe = (New-Object -ComObject Scripting.FileSystemObject).GetFile($inDirectExeFullPath).ShortPath
+              }
+            }
+            else {
+              # Executable path requires double-quoting.
+              $indirectExe = '"' + $indirectExe + '"'
+            }
+          }
+      
+          # Note: We cannot use .ForEach('GetType'), because we must remain PSv3-compatible.
+          , $indirectExe + ($argsForExe[($cmdLineArgOptionNdx + 2)..($argsForExe.Count - 1)] | ForEach-Object { ($_, "`"$_`"")[$_ -match $reMustDQuoteForCmd] -replace $reInteriorDQuotes, '""' }) -join ' '
         }
       }
     }
   }
   elseif ($isBatchFile) {
+
     # -- SPECIAL HANDLING FOR BATCH FILES IN ORDER TO *SUPPORT RELIABLE EXIT-CODE REPORTING*:
     #    See our SO question and answer at https://stackoverflow.com/a/67009271/45375
     #    We call via `cmd /c "<batch-file> ... & exit "`, using the same escaping as for direct `cmd /c` / `cmd /k` calls above.
     #       #  Hypothetical caveat: Since we must use ""-escaping when calling batch files: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), 
     #       #                       this escaping could still break if the ultimate target executable only supports \"
     #       #                       A least officially provided CLI entry points hopefully account for that (i.e., they hopefully only chose batch-file entry points if the code ultimately processing the arguments recognizes "" as an escaped ")
-    '/c', (((, $exe + $argsForExe).ForEach( {
+    
+    # First, check if the batch file path itself needs double-quoting.
+    if ($exe -match $reMustDQuoteForCmd) {
+      if ([Environment]::OSVersion.Version.Major -lt 10) {
+        # !! Before W10 (definitely on W7, up to 8.1?), cmd.exe breaks with `cmd /c "<double-quoted-batch-filepath> ..." invocations, 
+        # !! so we use the short, 8.3 version of the batch file path, which doesn't require quoting.
+        $exe = (New-Object -ComObject Scripting.FileSystemObject).GetFile($exe).ShortPath
+      }
+      else {
+        # Batch-file path requires double-quoting.
+        $exe = '"' + $exe + '"'
+      }
+    }
+    
+    # Note: We cannot use .ForEach('GetType'), because we must remain PSv3-compatible.
+    '/c', (((, $exe + ($argsForExe | ForEach-Object {
             if ($_ -match $rePartialDQuotingCandidate) {
               # support for partial double-quoting of msiexec-style arguments such as `foo="bar none"` - see above.
               $prefix, $arg = $Matches[1], $Matches[2]
@@ -896,37 +885,26 @@ files for Ruby. Again, Invoke-NativeShell or direct invocation with use of
               $prefix, $arg = '', $_
             }
             $prefix + (($arg, "`"$arg`"")[$arg -match $reMustDQuoteForCmd] -replace $reInteriorDQuotes, '""')
-          }) + '& exit') -join ' ')
+          })) + ' & exit') -join ' ')
     $exe = "$env:SystemRoot\System32\cmd.exe"
 
   }
   else {
     # Escape all arguments properly to pass them through as seen verbatim by PowerShell.
 
-    # Decide whether to escape embedded double quotes as \" or as "", based on the target executable.
-    $useDoubledDQuotes = if ($IsCoreCLR) {
-      # PSCore:
-      # * On Unix: we always use \" (which ProcessStartInfo.Arguments recognizes when it parses the pseudo command line into the array of arguments).
-      # * On Windows: We only use "" if we have to: for batch files and direct cmd.exe calls, for misexec-like executables, and for WSH calls (VBScript, JScript)
-      #               The assumption is that all executables support \" (typically in *addition* to the Windows-only "").
-      #               Batch-file caveat: In the case of batch files acting as CLI entry points (such as `az.cmd` for Azure), the "" quoting
-      #                                  could still break if the ultimate target executable only supports \"
-      #               WSH limitation: WSH supports neither "" nor \" as an escaped, embedded ", but using "" is *less* broken than \", 
-      #                               because - even though the embedded " are still *stripped* - at least the argument boundaries are preseved
-      #                               (because somethinglike `"Nat ""King"" Cole"` is parsed as a compound token composed of `"Nat "`, `"King"`, and `"Cole"`),
-      #                               whereas \" would not only not preserve argument boundaries but also retain the \ chars. 
-      $isBatchFile -or $isCmdExe -or $isMsiExecLikeExe -or $isWsh # Note: The $isBatchFile case is now handled in a separate block above.
-    }
-    else {
-      # WinPS:
-      # So as to eliminate edge cases where \" doesn't work due to PowerShell's re-quoting (see below) as much as possible, 
-      # we REVERSE the logic and *use "" by default*, except for known exceptions: Ruby, Perl, Rscript and the PowerShell CLIs (both editions) themselves, which all support \" only.
-      # All other executables are assumed to support "".
-      # !! THIS IS NOT NECESSARILY TRUE, HOWEVER, because executables that use the CommandLineToArgvW WinAPI function to parse their arguments do NOT support ""
-      # !! However, we still go with "" by default, under the assumption that CLI executables are more likely to use the C/C++ runtime's argv parsing, which DOES support "".
-      # !! This is invariably a COMPROMISE.
-      -not $supportsBackslashDQuoteOnly
-    }
+    # NOTE: FOR SIMPLICITY, WE ALWAYS USE --% FOR CLIs OTHER THAN CMD.EXE AND BATCH FILES - EVEN ON UNIX.
+    #       This saves us from having to special-case calls on *Windows PowerShell* where the following edge cases
+    #       cannot be handled with *direct* calls (without --%):
+    #          * Unbalanced embedded " preceded by a space-less token at the start of the argument; e.g.:
+    #             `3" of snow`
+    #          * A value enclosed *fully* in embedded ""; e.g.:
+    #             `"foo bar"`
+    #          * Additionally, in WinPS v3 and v4, partially quoted arguments such as `foo="bar none"` would invariably
+    #            be double-quoted *as a whole* without --%
+    $useStopParsingSymbol = $true
+
+    # Decide whether to escape embedded double quotes as \" or as "", based on the target executable (Windows only)
+    $useDoubledDQuotes = ($IsWindows -and ($isMsiExecLikeExe -or $isWsh)) -or $env:__ie_doubledquotes # test override via env. var.
     $escapedDQuote = ('\"', '""')[$useDoubledDQuotes]
     
     foreach ($arg in $argsForExe) {
@@ -937,38 +915,25 @@ files for Ruby. Again, Invoke-NativeShell or direct invocation with use of
       # Determine argument characteristics.
       $hasDQuotes = $arg.Contains('"')
       $hasSpaces = $arg.Contains(' ')
-      # Determine if *explicit* double-quoting must be used, as a *workaround*:
+      # Determine if *explicit* double-quoting must be used:
       #  * On Unix:
-      #     * Never: letting PowerShell automatically put the enclosing "..." around arguments *with spaces* on the pseudo-commad line assigned to ProcessStartInfo.Arguments is sufficient.
+      #     * Never: Because ""-escaping is never used.
       #  * On Windows:
       #     * If ""-escaping is used and a space-less argument contains "
-      #     * If a space-less argument is passed to a batch file and the argument contains cmd.exe metacharacters such as "&"
-      #       !! "=" ALSO belongs on the list of metacharacters, because in batch-file parsing - but not in pass-through with %* -
-      #       !! it separates arguments, just like "," and ";". However, enclosing tokens such as `FOO=bar` in double quotes
-      #       !! CONFLICTS with the MSI-style exceptions for NOT double-quoting the `FOO=` part of such arguments.
-      #       !! We're faced with the choice between passing `FOO=bar`, which makes misexec-style exes happy vs. `"FOO=bar"`, which
-      #       !! makes batch-file argument-parsing happy. We give precdence to the FORMER; fortunately, argument *pass-through* with %* isn't affected.
-      #     * Potentially (determined below), if *partial* double-quoting is needed (e.g., `FOO="bar none"`)
-      $mustManuallyDQuote = $IsWindows -and -not $hasSpaces -and (($useDoubledDQuotes -and $hasDQuotes) -or ($isBatchFile -and $arg -match '[&|<>^,;]')) # !! See comment re "=" above; also note: The $isBatchFile case is now handled in a separate block above.
-      # Determine if the argument must *end up* with double-quoting on the process command line on Windows, 
-      # whether applied as a workaround explicitly by us, or whether triggered by PowerShell due to embedded spaces.
+      $mustManuallyDQuote = $useDoubledDQuotes -and $hasDQuotes -and -not $hasSpaces
+      # Determine if the argument must *end up* with double-quoting on the process command line, 
+      # which applies either if manual double-quoting is required or the argument contains spaces.
       $mustEndUpDQuoted = $hasSpaces -or $mustManuallyDQuote
 
       # Windows only:
       # See if *partial double-quoting for msiexec-style CLIs* must be applied (e.g., `FOO="bar none"` or `/foo:"bar none"` / `-foo:"bar none"`)
-      # (By default, PowerShell - justifiably - passes such arguments as `"<propertyOrOptionName>=value with spaces"`, i.e. enclosed in double quotes *as a whole*,  which breaks such CLIs.)
       # Note: 
       #  * ":" only triggers this quoting if the argument starts with "/"  or "-", so that we don't accidentally turn `c:\program files` into `c:\"program files"`.
-      #  * We do NOT restrict this quoting to when $isMsiExecLikeExe is $true, so as to cover potential other CLIs that need this quoting.
-      #    However, given that in *PS Core* we use ""-escaping *only* when $isMsiExecLikeExe is $true, i.e. if specific executables are detected, any other CLIs
-      #    must understand \"-escaping if embedded " are present for the call to succeed (in *Windows PowerShell*, we *default* to ""-escaping to work around legacy bugs).
+      #  * We do NOT restrict this quoting to only when $isMsiExecLikeExe is $true, so as to also cover potential other CLIs that need this quoting.
+      #    However, given that we use ""-escaping *only* when $isMsiExecLikeExe is $true, i.e. if specific executables are detected, any other CLIs
+      #    must understand \"-escaping if embedded " are present for the call to succeed.
       #  * The partial double-quoting should be benign if it isn't actually needed, because conventional CLIs parse both `FOO="bar none"` and `"FOO=bar none"` as verbatim `FOO=bar none`.
-      #  * CAVEAT: In WinPS v3 and v4 only, *a partially quoted value that contains spaces*, such as `foo="bar none"`,
-      #            causes the engine to still enclose the entire argument in "...", which cannot be helped.
-      #            Only a *space-less* value that needs double-quoting is handled correctly (which may never occur in practice).
-      #            Calls to msiexec / msdeploy and cmdkey with values with spaces will therefore break and require --% in v3 and v4 - 
-      #            we could blindly still try the partial quoting, as the call will break either way, but it's better to highlight PowerShell's built-in behavior.
-      $mustPartiallyDQuote = $IsWindows -and $mustEndUpDQuoted -and $arg -match $rePartialDQuotingCandidate -and ($PSVersionTable.PSVersion.Major -ge 5 -or -not $hasSpaces)
+      $mustPartiallyDQuote = $IsWindows -and $mustEndUpDQuoted -and $arg -match $rePartialDQuotingCandidate
       if ($mustPartiallyDQuote) {
         # Split into - by definition pass-as-unquoted - prefix and the needs-double-quoting suffix.
         $prefix, $arg = $Matches[1], $Matches[2]
@@ -977,27 +942,7 @@ files for Ruby. Again, Invoke-NativeShell or direct invocation with use of
       else {
         $prefix = ''
       }
-  
-      if ($hasDQuotes -and -not $IsCoreCLR -and $supportsBackslashDQuoteOnly -and $ext -eq '.exe' -and $exeBaseName -ne 'git' -and $arg -match '^[^ ]+\".*? .*\"[^ ]*$') {
-        # !! Hack to work around a WinPS bug:
-        # !! If the \"-escaping must be used in arguments with spaces, WinPS doesn't recognize the need to "..."-enclose the argument
-        # !! if those spaces are inside the \"...\" sequence *and what precedes the opening \" contains no spaces*.
-        # !! The workaround of explicitly embedded enclosing `"..."` does NOT work in this case, due to the `\"-escaping - 
-        # !! avoiding this bug is why we chose to default to ""-escaping in WinPS to begin with.
-        # !! E.g, `print(\"hello there\")` (by contrast `print (\"hello there\")` is fine, due to the unprotected first space).
-        # !!
-        # !! Given that we therefore use \"-escaping only for "blacklisted" CLIs of which we know that they don't support ""-escaping, 
-        # !! and of which we also know that they expect command lines of *theirs* passed as single strings
-        # !! (ruby, perl, Rscript, powershell; e.g., `Rscript -e 'print("hi there")'`),
-        # !! we assume that *adding an extra, unprotected leading or trailing space* to avoid the bug is *benign*.
-        # !! Note:
-        # !!  If a *script* for one of these CLIs is *directly* called, we must *not* apply this hack, because the script arguments
-        # !!  cannot be assumed to be *command lines* for the implied target CLI, so such invocations will *break*.
-        # !!  However, it is less likely that arguments of the problematic form are passed - as data rather than code - to scripts.
-        # Write-Debug "adding trailing space for \"-only CLI to work around WinPS bug: $arg"
-        $arg += ' '  # Append trailing, unprotected space to force WinPS to double
-      }
-      
+        
       # Escape any embedded " first and
       # *double \ instances before them*, because a verbatim `\"` sequence would otherwise be interpreted as an *escaped* "
       # Note: We must must do this even when using ""-escaping on Windows, because Windows CLIs that accept ""-escaping *also* accept \"-escaping - even in a single argument.
@@ -1005,16 +950,15 @@ files for Ruby. Again, Invoke-NativeShell or direct invocation with use of
 
       # If double-quoting must be used, trailing '\'s must be doubled.
       # so that `c:\program files` translates to `"c:\program files\\"` - without the doubling the trailing \" would be interpreted as an *escaped* "
-      # * If we end up applying the double-quoting explicitly ourselves, we must always perform this escaping explicitly.
-      # * Otherwise, if we rely on PowerShell to apply the double-quoting, this escaping happens *automatically* in *PS Core*, but must still be done *manually* in *WinPS*>
-      if ($mustManuallyDQuote -or (-not $IsCoreCLR -and $mustEndUpDQuoted)) { $arg = $arg -replace '\\+$', '$&$&' }
-
-      # Write-Debug "after escaping: $arg"
+      if ($mustEndUpDQuoted) { $arg = $arg -replace '\\+$', '$&$&' }
       
-      # Apply explicit double-quoting, if necessay, and prepend the prefix, if partial quoting was applied.
+      # Apply explicit double-quoting, if necessary, and prepend the prefix, if partial quoting was applied.
       $arg = $prefix + $(if ($mustManuallyDQuote) { '"{0}"' -f $arg } else { $arg })
 
-      # Write-Debug "final: $arg" # !! PowerShell could still end up putting extra "..." around it on final process command line on Windows.
+      # Enclose the whole verbatim argument in "...", if necessary, for use with --%
+      if ($useStopParsingSymbol -and -not $mustPartiallyDQuote -and $mustEndUpDQuoted) {
+        $arg = '"' + $arg + '"'
+      }
 
       $arg # output the escaped argument.
       
@@ -1022,17 +966,24 @@ files for Ruby. Again, Invoke-NativeShell or direct invocation with use of
   }
 
   if ($DebugPreference -eq 'Continue') {
+    Write-Debug "Using --%: $useStopParsingSymbol; verbatim arguments:"
     # Print the verbatim arguments about to be passed.
     , $exe + $escapedArgs | ForEach-Object { "«$_»" } | Write-Debug
+    $host.Ui.WriteLine()
+  }
+
+  # If --% is to be used, prepend it to the array of escaped arguments.
+  if ($useStopParsingSymbol) {
+    $escapedArgs = , '--%' + $escapedArgs
   }
 
   # Finally, invoke the executable with the properly escaped arguments, if any, possibly with pipeline input.  
   # Note: We must use @escapedArgs rather than $escapedArgs, otherwise PowerShell won't apply
   #       Base64 encoding in the presence of a script-block argument when its CLI is called.
-  #       Use of @ also results in --% getting removed, but we don't support it meaningfully anyway.
+  #       Use of @ is also necessary we use --% to pass the escaped arguments.
   if ($MyInvocation.ExpectingInput) {
-    # IMPORTANT: We must only use `$input | ...` if actual pipeline input 
-    #            is present. If no input is present, PowerShell *still
+    # IMPORTANT: We must only use `$input | ...` *if actual pipeline input 
+    #            is present*. If no input is present, PowerShell *still
     #            redirects* the target executable's stdin and simply makes it
     #            *empty*. This causes command lines with *interactive* prompts
     #            to malfunction.
@@ -1040,18 +991,18 @@ files for Ruby. Again, Invoke-NativeShell or direct invocation with use of
     #                  with & here in order to avoid duplicating the actual
     #                  command: the pipeline input is then NOT passed through
     #                  (you'd have to use $input inside the script block too, which amounts to a catch-22).
-    # IMPORTANT: Changes to this call must be replicated in the `else` branch.
     $input | & $exe @escapedArgs
   }
   else {
     & $exe @escapedArgs
   }
 
+  # NOTE: 
   # $? *always* ends up as $true for the caller, irrespective of
   # the $LASTEXITCODE value, unfortunately, which cannot be helpd as of v7.1. 
   # This means you cannot use this function meaningfully with && and ||.
-  # There is no workaround as of PowerShell Core 7.1.0-preview.5, but there
-  # are plans to make $? settable by user code: see
+  # There is no workaround as of PowerShell Core 7.2.0-preview.5, but there
+  # are plans to make $? settable from user code: see
   # https://github.com/PowerShell/PowerShell/issues/10917#issuecomment-550550490
 
 }
@@ -1426,11 +1377,12 @@ WScript.Echo
       # Note: We explicitly use @ArgumentList rather than $ArgumentList,
       #       because we want to support --%, the stop-parsing symbol.
       #       Also, we use cscript.exe explicitly to ensure console output (default host may be wscript.exe)
+      #       !! Pre-W10, //nologo is required to suppress the "logo" (startup banner).
       if ($UseIe) {
-        ie cscript.exe $tmpVbScriptFile @ArgumentList
+        ie cscript.exe //nologo $tmpVbScriptFile @ArgumentList
       }
       else {
-        & cscript.exe $tmpVbScriptFile @ArgumentList
+        & cscript.exe //nologo $tmpVbScriptFile @ArgumentList
       }
 
       Remove-Item -ErrorAction Ignore -LiteralPath $tmpVbScriptFile

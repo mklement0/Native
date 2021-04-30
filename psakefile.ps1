@@ -129,8 +129,16 @@ task Publish -alias pub -depends _assertMasterBranch, _assertNoUntrackedFiles, T
   # Push the tags to the origin repo.
   iu git push -f origin master --tags
 
-  # Final prompt before publishign to the PS gallery.
-  assert-confirmed @"
+  # Final prompt before publishing to the PS gallery.
+  
+  # Command line for running the tests in the WinPS v3 and v4 VMs, assuming that:
+  #   * Pester is installed there.
+  #   * They have access to *hard-coded* \\mkw10\c$\... path to copy the locally published module from.
+  $v3v4TestCommandLine = @'
+rmo -ea ignore Native; pushd c:/; ri -ea ignore -recurse -force $HOME\Documents\WindowsPowerShell\Modules\Native; cpi -ea stop \\mkw10\c$\Users\jdoe\Dropbox\MkUtil.Win\Users\mklement\Settings\PowerShell\Modules\Native $HOME\Documents\WindowsPowerShell\Modules\ -recurse -force; ipmo Native -force -vb; pushd $HOME\Documents\WindowsPowerShell\Modules\Native; ipr
+'@
+
+assert-confirmed @"
 
 About to PUBLISH TO THE POWERSHELL GALLERY:
 
@@ -145,8 +153,7 @@ About to PUBLISH TO THE POWERSHELL GALLERY:
        * on ALL PLATFORMS and
        * on WINDOWS, both in PowerShell Core and Windows PowerShell
          * as well as in v3 and v4: in these VMs, run the following before testing:
-         rmo -ea ignore Native; pushd c:/; ri -ea ignore -recurse -force `$HOME\Documents\WindowsPowerShell\Modules\Native; cpi \\mkw10\c$\MkUtil\Users\mklement\Settings\PowerShell\Modules\Native `$HOME\Documents\WindowsPowerShell\Modules\ -recurse -force; ipmo native -vb; pushd `$HOME\Documents\WindowsPowerShell\Modules\Native; ipr
- 
+           $v3v4TestCommandLine
 
 Proceed?
 "@
