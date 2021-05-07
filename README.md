@@ -11,12 +11,14 @@ To **install** it for the current user, run `Install-Module Native -Scope Curren
 * [`ins` (`Invoke-NativeShell`)](#ins-invoke-nativeshell) presents a **unified interface to the platform-native shell**, allowing you to pass a command line either as as an argument - a single string - or via the pipeline
   * e.g., `ins 'ver & whoami'` on Windows, `ins 'ls / | cat -n'` on Unix.
 
-* [`ie` (short for: **I**nvoke (external) **E**xecutable)](#ie-short-for-invoke-external-executable) allows you to **pass arguments to external programs robustly**, to compensate for PowerShell's broken behavior as of v7.0.
+* [`ie` (short for: **I**nvoke (external) **E**xecutable)](#ie-short-for-invoke-external-executable) allows you to **pass arguments to external programs robustly**, to compensate for PowerShell's broken behavior as of v7.1.
   * E.g., `'a"b' | ie findstr 'a"b'` on Windows, `'a"b' | ie grep 'a"b'` on Unix.
   * The closely related `iee` function additionally reports a script-terminating (fatal by default) error if the external program signals failure via a _nonzero exit code_.
+  * **Important**: PowerShell Core 7.2.0-preview.5 introduced a new [experimental feature](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Experimental_Features) named `PSNativeCommandArgumentPassing`, with preference variable `$PSNativeCommandArgumentPassing`, which supports values `'Legacy'` (old, broken behavior) and `'Standard'` (correct and fully robust behavior on _Unix_, but a lack of important accommodations for high-profile CLIs on _Windows_, along with bugs). Because [GitHub proposal #15143](https://github.com/PowerShell/PowerShell/issues/15143), which suggests adding these accommodations, [was rejected](https://github.com/PowerShell/PowerShell/issues/15143#issuecomment-833090452), **use of `ie` will, unfortunately, continue to be required in v7.2+ on Windows**.
 
 * [`dbea` (`Debug-ExecutableArguments`)](#dbea-debug-executablearguments) is a **diagnostic command** for understanding and **troubleshooting how PowerShell passes arguments to external executables**.
   * e.g., `dbea -- one '' '{ "foo": "bar" }'` vs. - with implicit use of `ie` - `dbea -UseIe -- one '' '{ "foo": "bar" }'`
+
 
 ### Getting Help
 
@@ -103,14 +105,14 @@ Presents a unified interface to the platform-native shell (`cmd.exe` on Windows,
 
 * For _batch-file_ calls, _reliable exit-code reporting_ is ensured, using the technique from [this Stack Overflow post](https://stackoverflow.com/q/66975883/45375).
 
-Examples (without the use of `ie`, these commands wouldn't work as expected as of PowerShell 7.0):
+Examples (without the use of `ie`, these commands wouldn't work as expected as of PowerShell 7.1):
   * Unix: `'a"b' | ie grep 'a"b'`
   * Windows: `'a"b' | ie findstr 'a"b'`
 
 * Note:
   * Unlike `ins`, `ie` expects you to use _PowerShell_ syntax and pass arguments _individually_, as you normally would in direct invocation; in other words: simply place `ie` as the command name before how you would normally invoke the external executable (if the normal invocation would synctactically require `&`, use `ie` _instead_ of `&`.)
 
-  * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.1, [as summarized in GitHub issue #15143](https://github.com/PowerShell/PowerShell/issues/15143); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds.
+  * There should be no need for such a function, but it is currently required because PowerShell's built-in argument passing is still broken as of PowerShell 7.1, [as summarized in GitHub issue #15143](https://github.com/PowerShell/PowerShell/issues/15143); should the problem be fixed in a future version, this function will detect the fix and will no longer apply its workarounds; _for the latest status, see the summary in the "Overview" section above_.
 
   * `ie` should be fully robust on Unix-like platforms, but on Windows the fundamental nature of argument passing to a process via a single string that encodes all arguments prevents a fully robust solution. However, `ie` tries hard to make the vast majority of calls work, by automatically handling special quoting needs for batch files and for executables such as `msiexec.exe` / `msdeploy.exe` and `cmdkey.exe` (run `Get-Help ie -Full` for details); by default it adheres to the [Microsoft C/C++ quoting conventions for process command lines](https://docs.microsoft.com/en-us/cpp/cpp/main-function-command-line-args?view=vs-2019#parsing-c-command-line-arguments). If `ie` doesn't work in a given call, use direct invocation with `--%`, the [stop-parsing symbol](https://docs.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_Parsing) to control quoting explicitly, or call via `ins` (given that `cmd.exe` ultimately uses the quoting as specified).
 
@@ -123,7 +125,7 @@ A diagnostic command for understanding and troubleshooting how PowerShell passes
 
 * Pass arguments as you would to an external executable to see how they would be received by it and, on Windows only, what the entire command line that PowerShell constructed behind the scenes looks like (this doesn't apply on Unix, where executables don't receive a single command line containing all arguments, but - more reliably - an array of individual arguments).  
   * To prevent pass-through arguments from being mistaken for the command's own parameters, place `--` before the list of pass-through arguments, as shown in the examples.
-  * Use `-ie` (`-UseIe`) in order to see how invocation via `ie` corrects the problems that plague direct invocation as of PowerShell 7.0.  
+  * Use `-ie` (`-UseIe`) in order to see how invocation via `ie` corrects the problems that plague direct invocation as of PowerShell 7.1.  
   * Use `-UseBatchFile` on Windows to use an argument-printing batch file instead of the .NET helper executable, to see how batch files receive arguments; `-UseWrapperBatchFile` uses an _intermediate_ batch file that passes the arguments through to the .NET helper executable, to see how batch files acting as CLI entry points affect the argument passing.
 
 * Examples:
